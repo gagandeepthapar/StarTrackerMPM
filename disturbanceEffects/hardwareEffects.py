@@ -9,11 +9,11 @@ class camera:
         _type_: _description_
     """
 
-    _centroid_std_dev = 0.1
-    _principal_pt_std_dev = 4.5
-    _f_len_std_dev = 0.6
-    _f_array_inc_std_dev = 0.075
-    _distortion_std_dev = 0.1
+    _centroid_std_dev = 0.1/3
+    _principal_pt_std_dev = 4.5/3
+    _f_len_std_dev = 0.6/3
+    _f_array_inc_std_dev = 0.075/3
+    _distortion_std_dev = 0.1/3
 
     def __init__(self, inc_angle:float=None,
                        centroid_acc:float=None,

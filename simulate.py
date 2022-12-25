@@ -1,10 +1,13 @@
-import numpy as np
-import matplotlib.pyplot as plt
 import argparse
-from alive_progress import alive_bar
-from disturbanceEffects.hardwareEffects import *
-import constants as c
 import warnings
+
+import matplotlib.pyplot as plt
+import numpy as np
+from alive_progress import alive_bar
+
+import constants as c
+from disturbanceEffects.hardwareEffects import *
+
 
 def sunEtalHardwareFunc(camera:Camera, star_angle:float=0)->float:
 
@@ -83,14 +86,13 @@ def surfaceSim(cam:Camera, param:Parameter, maxAngle:float=10, numRuns:int=1_000
     fname = c.MEDIA + "{}_UnivariateEffect".format(param.name)
     plt.savefig(fname)
 
-    return ax
+    return
 
 def parseArguments()->argparse.Namespace:
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-n', help="Number of Runs. Default 1", type=int, default=1)
-    # parser.add_argument('--type', help="Sim to run. Default Monte Carlo", type=str, default='m')
 
     return parser.parse_args()
 

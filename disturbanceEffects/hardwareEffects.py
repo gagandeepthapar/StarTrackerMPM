@@ -1,116 +1,140 @@
 import numpy as np
-import constants as c
+
+try:
+    from StarTrackerMPM import constants as c
+except:
+    import sys
+    sys.path.append(sys.path[0] + '/..')
+    import constants as c
+
 import json
 
-class camera:
-    """_summary_
+class Parameter:
 
-    Returns:
-        _type_: _description_
-    """
+    def __init__(self, ideal:float, stddev:float, mean:float=0, name:str=None)->None:
 
-    _centroid_std_dev = 0.1/3
-    _principal_pt_std_dev = 4.5/3
-    _f_len_std_dev = 0.6/3
-    _f_array_inc_std_dev = 0.075/3
-    _distortion_std_dev = 0.1/3
+        self.ideal = ideal
+        self.name = name
 
-    def __init__(self, inc_angle:float=None,
-                       centroid_acc:float=None,
-                       principal_pt_acc:float=None,
-                       f_len:float=None,
-                       f_array_inc_angle:float=None,
-                       distortion:float=None,
-                       cam_json:str=c.simCameraSunEtal):
+        self._err_mean = mean
+        self._err_stddev = stddev
+    
+        self.range = self._err_mean + (3*self._err_stddev)
+        self.minRange = self.ideal - self.range
+        self.maxRange = self.ideal + self.range
+
+        self.modulate()
+
+        return
+    
+    def __repr__(self)->str:
+        pname = '{}: {} [{}(\u03BC) +/- {}(3\u03C3)]'.format(self.name, np.round(self.value,3), self.ideal, 3*self._err_stddev)
+        return pname
+    
+    
+
+    def modulate(self)->float:
+        self.value = self.ideal + (np.random.normal(loc=self._err_mean, scale=self._err_stddev))
+        return self.value
+    
+    def reset(self)->float:
+        self.value = self.ideal
+        return self.value
+
+    def _init_from_json(fp:str,name:str)->None:
+
+        camDict = json.load(open(fp))
+
+        ideal = camDict[name+"_IDEAL"]
+        mean = camDict[name+"_MEAN"]
+        stddev = camDict[name+"_STDDEV"]/3
+
+        return Parameter(ideal=ideal, stddev=stddev, mean=mean, name=name)
+
+class Camera:
+
+    def __init__(self, centroid_accuracy:Parameter=None,
+                       principal_point_accuracy:Parameter=None,
+                       focal_length:Parameter=None,
+                       array_tilt:Parameter=None,
+                       distortion:Parameter=None,
+                       cam_json:str=c.simCameraSunEtal)->None:
 
         # open cam property file
-        self.camJSON = json.load(open(cam_json))
+        self.camJSON = cam_json
 
-        # set incident angle of star
-        # self._true_incident_angle = inc_angle
+        # set properties of camera
+        self.ctr_acc = self._set_parameter(centroid_accuracy, "CENTROID_ACCURACY")
+        self.ppt_acc = self._set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
+        self.f_len = self._set_parameter(focal_length, "FOCAL_LENGTH")
+        self.array_tilt = self._set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
+        self.distortion = self._set_parameter(distortion, "DISTORTION")
 
-        # set misc camera properties
-        self._true_incident_angle = self._set_true_value(inc_angle, "INCIDENT_ANGLE", self.camJSON)
-        self._true_f_len = self._set_true_value(f_len, "FOCAL_LENGTH", self.camJSON)
-        self._true_centroid_acc = self._set_true_value(centroid_acc, "CENTROID_ACCURACY", self.camJSON)
-        self._true_principal_pt_acc = self._set_true_value(principal_pt_acc, "PRINCIPAL_POINT_ACCURACY", self.camJSON)
-        self._true_f_array_inc_angle = self._set_true_value(f_array_inc_angle, "FOCAL_ARRAY_INCLINATION", self.camJSON)
-        self._true_distortion = self._set_true_value(distortion, "DISTORTION", self.camJSON)
-
-        # preallocate space for properties; defaulted to equal to true value
-        self.f_len = self._true_f_len
-        self.centroid_acc = self._true_centroid_acc
-        self.principal_pt_acc = self._true_principal_pt_acc
-        self.f_array_inc_angle = self._true_f_array_inc_angle
-        self.distortion = self._true_distortion
-
-        # set FOV
-        # self._true_fov = self._get_fov(self._true_f_len)
-        # self.fov = self._get_fov(self.f_len)
+        self._set_img_fov()
 
         return
 
     def __repr__(self):
-        cname = f"Camera:" \
-                f"\n\tFocal Length: {self.f_len} mm"
+        cname = "Camera:"\
+                "\n\t{}"\
+                "\n\t{}"\
+                "\n\t{}"\
+                "\n\t{}"\
+                "\n\t{}\n".format(repr(self.f_len),
+                            repr(self.ctr_acc),
+                            repr(self.ppt_acc),
+                            repr(self.array_tilt),
+                            repr(self.distortion))
 
         return cname
+    
+    def _set_parameter(self, parameter:Parameter, name:str)->Parameter:
+        if parameter is not None:
+            return parameter
+
+        return Parameter._init_from_json(self.camJSON, name)
+
+    def _set_img_fov(self)->None:
+
+        cam = json.load(open(self.camJSON))
+
+        self._imgX = cam['IMAGE_WIDTH']
+        self._imgY = cam['IMAGE_HEIGHT']
+        self._pixelX = cam['PIXEL_WIDTH']
+        self._pixelY = cam['PIXEL_HEIGHT']
+
+        wd = self._imgX * self._pixelX
+        ht = self._imgY * self._pixelY
+        x = np.sqrt(wd**2 + ht**2)
+
+        fov = 2*np.arctan(x/(2*self.f_len.value))
+
+        self._fov = np.rad2deg(fov)
+
+        return
+
+    def modulate_centroid(self)->float:
+        return self.ctr_acc.modulate()
+    
+    def modulate_principal_point_accuracy(self)->float:
+        return self.ppt_acc.modulate()
+    
+    def modulate_focal_length(self)->float:
+        return self.f_len.modulate()
+    
+    def modulate_array_tilt(self)->float:
+        return self.array_tilt.modulate()
+    
+    def modulate_distortion(self)->float:
+        return self.distortion.modulate()
 
     def reset_params(self)->None:
-
-        self.f_len = self._true_f_len
-        self.centroid_acc = self._true_centroid_acc
-        self.principal_pt_acc = self._true_principal_pt_acc
-        self.f_array_inc_angle = self._true_f_array_inc_angle
-        self.distortion = self._true_distortion
-
+        self.f_len.reset()
+        self.ctr_acc.reset()
+        self.ppt_acc.reset()
+        self.array_tilt.reset()
+        self.distortion.reset()
         return
-
-    def modulate_params(self, f_len:bool=False, centroid:bool=False, principal:bool=False, f_array:bool=False, distortion:bool=False)->None:
-
-        if f_len:
-            self.f_len = self._set_single_value(self._true_f_len, error_stddev=self._f_len_std_dev)
-        
-        if centroid:
-            self.centroid_acc = self._set_single_value(self._true_centroid_acc, error_stddev=self._centroid_std_dev)
-        
-        if principal:
-            self.principal_pt_acc = self._set_single_value(self._true_principal_pt_acc, error_stddev=self._principal_pt_std_dev)
-        
-        if f_array:
-            self.f_array_inc_angle = self._set_single_value(self._true_f_array_inc_angle, error_stddev=self._f_array_inc_std_dev)
-        
-        if distortion:
-            self.distortion = self._set_single_value(self._true_distortion, error_stddev=self._distortion_std_dev)
-        
-        return
-
-    def _set_true_value(self, param_val:float, param_str:str, true_source:dict)->float:
-
-        if param_val is None:
-            return true_source[param_str]
-
-        return param_val
-
-    def _set_single_value(self, true_param:float, error_mean:float=0, error_stddev:float=0)->float:
-        """Sets parameter based on true/target value and expected error
-
-        Args:
-            true_param (float): true/target value
-            error_mean (float, optional): mean of error. Defaults to 0.
-            error_stddev (float, optional): std dev of error. Defaults to 0.
-
-        Returns:
-            float: randomized parameter
-        """
-
-        param = true_param + np.random.normal(loc=error_mean, scale=error_stddev)
-
-        return param
     
-    def _get_fov(self, f_len:float, img_height:int, pixel_height:float)->float:
 
-        H = img_height*pixel_height
-        fov = 2* np.arctan(H/(2*f_len))
 
-        return np.rad2deg(fov)

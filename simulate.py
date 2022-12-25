@@ -2,87 +2,108 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 from alive_progress import alive_bar
+from disturbanceEffects.hardwareEffects import *
+import constants as c
+import warnings
 
-from hardwareEffects import camera
-
-def sunEtalHardwareFunc(camera:camera)->float:
+def sunEtalHardwareFunc(camera:Camera, star_angle:float=0)->float:
 
     c = camera
+
+    beta = np.deg2rad(star_angle)
+    theta = np.deg2rad(c.array_tilt.value)
     
-    delF = c.f_len - c._true_f_len
-    delS = c.principal_pt_acc - c._true_principal_pt_acc
-    delX = c.centroid_acc - c._true_centroid_acc
-    delD = c.distortion - c._true_distortion
-    theta = np.deg2rad(c.f_array_inc_angle - c._true_f_array_inc_angle)
-    beta = np.deg2rad(c._true_incident_angle)
+    f1 = (c.f_len.value + (c.ppt_acc.value * np.tan(theta)))/np.cos(theta + beta)
+    f2 = c.ppt_acc.value/np.cos(theta)
+    f3 = f2/c.f_len.ideal
 
-    delF = 0
-    delX = 0
-    delD = 0
-    theta = 0
+    eA_a = np.arctan((f1*np.sin(beta) + f2 + c.ctr_acc.value + c.distortion.value)/c.f_len.ideal)
+    eA_b = np.arctan(f3)
+    eA_c = beta
 
-    delS = np.random.normal(scale=1.5, loc=0)
-    beta = np.deg2rad(8.5)
+    eA = eA_a - eA_b - eA_c
 
-    # print(np.rad2deg(beta))
+    return eA*3600
 
-    chars = 'delF: {}, delS: {}, delX: {}, delD: {}, theta: {}, beta: {}'.format(delF, delS, delX, delD, theta, beta)
-    trues = 'focal: {}, centroid: {}, princ: {}, distortion: {}'.format(c.f_len, c.centroid_acc, c.principal_pt_acc, c.distortion)
-    # print(chars)
-    # print(f'true: {c._true_principal_pt_acc}; mod: {c.principal_pt_acc}')
-    # print(trues)
+def monteCarlo(cam:Camera, numRuns:int=1):
 
-    f1 = (c._true_f_len + delF + delS*np.tan(theta))/np.cos(theta + beta)
-    f2 = delS/np.cos(theta)
-    f3 = delS/(c._true_f_len*np.cos(theta))
-
-    eA = np.arctan((f1*np.sin(beta) + f2 + delX + delD)/c._true_f_len) - np.arctan(f3) - beta
-
-    eB = np.arctan(np.tan(beta)) + np.arctan(delS/(c._true_f_len*np.cos(theta))) - np.arctan(f3) - beta
-    
-    return eB * 3600
-    # return delS
-
-def simulateSunEtal(numRuns:int=1)->float:
-
-    cam = camera()
+    data = np.zeros((numRuns,1))
     cam.reset_params()
 
-    runs = np.array([])
-    data = np.zeros((numRuns, 1))
-
-    with alive_bar(numRuns) as bar:
+    with alive_bar(numRuns, title='Running Monte Carlo Analysis') as bar:
         for i in range(numRuns):
-
-            cam.modulate_params(principal=True)
-            data[i] = sunEtalHardwareFunc(cam)
-
+            cam.modulate_principal_point_accuracy()
+            data[i] = sunEtalHardwareFunc(cam, 8.5)
             bar()
-
-    mean = np.mean(data)
-    std_dev = np.std(data)
     
-    print(f'{numRuns} Runs:\n\tMean: {mean} +/- {std_dev} asec')
+    print('\n{}({}) +/- {}(3{})\n'.format(np.mean(data),c.MU, np.std(data), c.SIGMA))
+
+    return
+
+def surfaceSim(cam:Camera, param:Parameter, maxAngle:float=10, numRuns:int=1_000_000)->None:
+
+    numRuns = int(np.sqrt(numRuns))
+
+    cam.reset_params()
+    param_range = np.linspace(param.minRange, param.maxRange, numRuns)
+    angle_range = np.linspace(0, maxAngle, numRuns).reshape(numRuns,1)
+
+    param_space = np.tile(param_range, (numRuns,1))
+    angle_space = np.tile(angle_range, (1, numRuns))
+
+    data = np.empty((numRuns, numRuns), dtype=float)
+
+    simname = '{} Surface:'.format(param.name)
+
+    with alive_bar(numRuns*numRuns, title=simname) as bar:
+        for i in range(numRuns):
+            for j in range(numRuns):
+                param.value = param_space[i][j]
+                angle = angle_space[i][j]
+
+                data[i][j] = sunEtalHardwareFunc(cam, angle)
+
+                bar()
     
-    # fig = plt.figure()
-    # ax = plt.axes()
+    xlbl = '{}: {} +/- {} (3{})'.format(param.name, param.ideal, 3*param._err_stddev, c.SIGMA)
+    ylbl = 'Incident Angle: 0 - {}{}'.format(maxAngle, c.DEG)
+    zlbl = 'Accuracy (")'
+    title = '{} x Incident Angle'.format(param.name)
 
-    # ax.plot(runs, data)
-    # plt.show()
+    warnings.filterwarnings("ignore")
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    fig.set_size_inches(10, 12)
+    ax.plot_surface(param_space, angle_space, data, cmap='plasma')
 
-    return mean, std_dev
+    ax.set_xlabel(xlbl)
+    ax.set_ylabel(ylbl)
+    ax.set_zlabel(zlbl)
+    ax.set_title(title)
 
-def parse_arguments():
+    fname = c.MEDIA + "{}_UnivariateEffect".format(param.name)
+    plt.savefig(fname)
 
-    parser = argparse.ArgumentParser(description='Arguments to run Monte Carlo Analysis')
+    return ax
 
-    parser.add_argument('-n', help='Number of runs; Default 1', type=int, default=1)
+def parseArguments()->argparse.Namespace:
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-n', help="Number of Runs. Default 1", type=int, default=1)
+    # parser.add_argument('--type', help="Sim to run. Default Monte Carlo", type=str, default='m')
 
     return parser.parse_args()
 
 if __name__ == '__main__':
+    args = parseArguments()
+    cam = Camera()
 
-    args = parse_arguments()
-    simulateSunEtal(args.n)
-    print(np.deg2rad(8.5)*3600)
-    # a = np.array([])
+    # monteCarlo(cam=cam, numRuns=args.n)
+
+    surfaceSim(cam=cam, param=cam.f_len, numRuns=args.n)
+    surfaceSim(cam=cam, param=cam.ctr_acc, numRuns=args.n)
+    surfaceSim(cam=cam, param=cam.array_tilt, numRuns=args.n)
+    surfaceSim(cam=cam, param=cam.distortion, numRuns=args.n)
+    surfaceSim(cam=cam, param=cam.ppt_acc, numRuns=args.n)
+
+    plt.show()

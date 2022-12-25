@@ -15,3 +15,8 @@ simCameraSunEtal = os.path.join(curFile, 'utils/', 'simCameraSunEtAl.json')
 
 """ MEDIA """
 MEDIA = os.path.join(curFile, 'media/')
+
+""" SYMBOLS """
+MU = "\u03BC"
+SIGMA = "\u03C3"
+DEG = "\u00B0"

@@ -9,7 +9,9 @@ import pandas as pd
 curFile = os.path.abspath(os.path.dirname(__file__))
 
 """ CAMERA CONFIGS """
-simCameraSunEtal = os.path.join(curFile, 'utils/', 'simCameraSunEtAl.json')
+IDEAL_CAM = os.path.join(curFile, 'utils/', 'idealCamera.json')
+SUNETAL_CAM = os.path.join(curFile, 'utils/', 'sunEtalCamera.json')
+ALTIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
 
 """ SATELLITE/MATERIAL PROPERTIES """
 

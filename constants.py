@@ -11,7 +11,7 @@ curFile = os.path.abspath(os.path.dirname(__file__))
 """ CAMERA CONFIGS """
 IDEAL_CAM = os.path.join(curFile, 'utils/', 'idealCamera.json')
 SUNETAL_CAM = os.path.join(curFile, 'utils/', 'sunEtalCamera.json')
-ALTIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
+ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
 
 """ SATELLITE/MATERIAL PROPERTIES """
 

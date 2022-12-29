@@ -9,50 +9,10 @@ except:
 
 import json
 
-class Parameter:
+from .Parameter import Parameter
 
-    def __init__(self, ideal:float, stddev:float, mean:float=0, name:str=None)->None:
 
-        self.ideal = ideal
-        self.name = name
-
-        self._err_mean = mean
-        self._err_stddev = stddev
-    
-        self.range = self._err_mean + (3*self._err_stddev)
-        self.minRange = self.ideal - self.range
-        self.maxRange = self.ideal + self.range
-
-        self.modulate()
-
-        return
-    
-    def __repr__(self)->str:
-        pname = '{}: {} [{}(\u03BC) +/- {}(3\u03C3)]'.format(self.name, np.round(self.value,3), self.ideal, 3*self._err_stddev)
-        return pname 
-
-    def modulate(self)->float:
-        self.value = self.ideal + (np.random.normal(loc=self._err_mean, scale=self._err_stddev))
-        return self.value
-    
-    def reset(self)->float:
-        self.value = self.ideal
-        return self.value
-
-    def get_ideal_param(self)->None:
-        return Parameter(ideal=self.ideal, stddev=0, mean=0, name="IDEAL_"+self.name)
-
-    def _init_from_json(fp:str,name:str)->None:
-
-        camDict = json.load(open(fp))
-
-        ideal = camDict[name+"_IDEAL"]
-        mean = camDict[name+"_MEAN"]
-        stddev = camDict[name+"_STDDEV"]/3
-
-        return Parameter(ideal=ideal, stddev=stddev, mean=mean, name=name)
-
-class Camera:
+class StarTracker:
 
     def __init__(self, centroid_accuracy:Parameter=None,
                        principal_point_accuracy:Parameter=None,
@@ -69,12 +29,19 @@ class Camera:
         # set properties of camera
         self.ctr_acc = self._set_parameter(centroid_accuracy, "CENTROID_ACCURACY")
         self.ppt_acc = self._set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
-        self.f_len = self._set_parameter(focal_length, "FOCAL_LENGTH")
         self.array_tilt = self._set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
         self.distortion = self._set_parameter(distortion, "DISTORTION")
 
-        self._fov = self._set_img_fov()
+        f_len_mm = self._set_parameter(focal_length, "FOCAL_LENGTH")
+        self._fov = self._set_img_fov(f_len_mm=f_len_mm)
+
+        f_len_px = f_len_mm.ideal / np.sqrt(self._pixelX**2 + self._pixelY**2)
+        self.f_len = Parameter(ideal=f_len_px, stddev=f_len_mm._err_stddev, mean=f_len_mm._err_mean, name=f_len_mm.name)
+
+        
         self._num_stars = self._set_est_num_stars()
+        
+        self.reset_params()
 
         return
 
@@ -107,7 +74,9 @@ class Camera:
 
         return Parameter._init_from_json(self.camJSON, name)
 
-    def _set_img_fov(self)->float:
+    def _set_img_fov(self, f_len_mm)->float:
+
+        f_len = f_len_mm
 
         cam = json.load(open(self.camJSON))
 
@@ -120,7 +89,7 @@ class Camera:
         ht = self._imgY * self._pixelY
         x = np.sqrt(wd**2 + ht**2)
 
-        fov = np.rad2deg(2*np.arctan(x/(2*self.f_len.value)))
+        fov = np.rad2deg(2*np.arctan(x/(2*f_len.value)))
 
         return fov
 
@@ -150,5 +119,3 @@ class Camera:
         self.distortion.reset()
         return
     
-
-

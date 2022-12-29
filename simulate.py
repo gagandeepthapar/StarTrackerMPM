@@ -4,89 +4,59 @@ from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from alive_progress import alive_bar
 
 import constants as c
-from disturbanceEffects.hardwareEffects import *
+from disturbanceEffects.Parameter import Parameter
+from disturbanceEffects.StarTracker import StarTracker
 
 
-def sunEtalHardwareFunc(camera:Camera, star_angle:float=0)->float:
+def _est_StarTracker_Accuracy(mean:float, stddev:float, num_stars:float)->tuple[float]:
 
-    c = camera
+    stddev_range = 3*stddev
 
-    beta = np.deg2rad(star_angle)
-    theta = np.deg2rad(c.array_tilt.value)
-    
-    f1 = (c.f_len.value + (c.ppt_acc.value * np.tan(theta)))/np.cos(theta + beta)
-    f2 = c.ppt_acc.value/np.cos(theta)
-    f3 = f2/c.f_len.ideal
+    data_minRange = mean - stddev_range
+    data_maxRange = mean + stddev_range
 
-    eA_a = np.arctan((f1*np.sin(beta) + f2 + c.ctr_acc.value + c.distortion.value)/c.f_len.ideal)
-    eA_b = np.arctan(f3)
-    eA_c = beta
+    accMin = data_minRange/np.sqrt(num_stars)
+    accMax = data_maxRange/np.sqrt(num_stars)
 
-    eA = eA_a - eA_b - eA_c
+    print('\nSTAR TRACKER ACCURACY:')
+    print('\t{}({}) +/- {}(1{}) Star Mismatch'.format(mean, c.MU, stddev, c.SIGMA))
+    print('\t{}" ~ {}" 3{}-Accuracy\n'.format(accMin, accMax, c.SIGMA))
 
-    return eA*3600
+    return (accMin, accMax)
 
-def monteCarlo(cam:Camera, numRuns:int=1_000):
+def _dispMonteCarloResults(starframe:pd.DataFrame, numStars:float)->None:
 
-    data = np.zeros((numRuns,1))
-    cam.reset_params()
-    print(cam)
-
-    with alive_bar(numRuns, title='Running Monte Carlo Analysis') as bar:
-        for i in range(numRuns):
-            cam.modulate_array_tilt()
-            cam.modulate_centroid()
-            cam.modulate_distortion()
-            cam.modulate_focal_length()
-            cam.modulate_principal_point_accuracy()
-
-            data[i] = sunEtalHardwareFunc(cam, 8.5)
-            bar()
+    data = starframe['Mismatch']
+    star_angle = starframe['StarAngle']
+    numRuns = len(starframe.index)
 
     data_mean = np.mean(data)
     data_std = np.std(data)
 
-    data_minRange = data_mean - (3*data_std)
-    data_maxRange = data_mean + (3*data_std)
-
-    accMin = data_minRange/np.sqrt(cam._num_stars)
-    accMax = data_maxRange/np.sqrt(cam._num_stars)
-
-    print('\n{}({}) +/- {}(1{})'.format(data_mean,c.MU, data_std, c.SIGMA))
-    print('{}" ~ {}" 3{}-Accuracy\n'.format(accMin, accMax, c.SIGMA))
+    print('\nSIM PARAMS:\n\t{:,} Runs\n\tMean Star Angle: {} +/- {}{}(1{})\n'.format(numRuns,
+                                                                                    np.mean(star_angle),
+                                                                                    np.std(star_angle),
+                                                                                    c.DEG,
+                                                                                    c.SIGMA))
+    _est_StarTracker_Accuracy(data_mean, data_std, numStars)
 
     return
 
-def surfaceSim(cam:Camera, param:Parameter, maxAngle:float=10, numRuns:int=1_000, save:bool=False)->None:
-
-    numRuns = int(np.sqrt(numRuns))
-
-    cam.reset_params()
-    print('Modulating {}'.format(param))
-
-    param_range = np.linspace(param.minRange, param.maxRange, numRuns)
-    angle_range = np.linspace(0, maxAngle, numRuns).reshape(numRuns,1)
-
-    param_space = np.tile(param_range, (numRuns,1))
-    angle_space = np.tile(angle_range, (1, numRuns))
-
-    data = np.empty((numRuns, numRuns), dtype=float)
-
-    simname = '{} Surface:'.format(param.name)
-
-    with alive_bar(numRuns*numRuns, title=simname) as bar:
-        for i in range(numRuns):
-            for j in range(numRuns):
-                param.value = param_space[i][j]
-                angle = angle_space[i][j]
-
-                data[i][j] = sunEtalHardwareFunc(cam, angle)
-
-                bar()
+def _plotSurfaceSimResults(starframe:pd.DataFrame, param:Parameter, savePlot:bool=False)->None:
     
+    numRuns = len(starframe.index)
+    gridsize = int(np.sqrt(numRuns))
+
+    param_space = np.reshape(np.array(starframe[param.name]), (gridsize, gridsize))
+    angle_space = np.reshape(np.array(starframe['AngleSpace']), (gridsize, gridsize))
+    data =        np.reshape(np.array(starframe['Data']), (gridsize, gridsize))
+
+    maxAngle = starframe['AngleSpace'].iloc[-1]
+
     xlbl = '{}: {} +/- {} (3{})'.format(param.name, param.ideal, 3*param._err_stddev, c.SIGMA)
     ylbl = 'Incident Angle: 0 - {}{}'.format(maxAngle, c.DEG)
     zlbl = 'Accuracy (")'
@@ -106,11 +76,122 @@ def surfaceSim(cam:Camera, param:Parameter, maxAngle:float=10, numRuns:int=1_000
     ax.set_zlabel(zlbl)
     ax.set_title(title)
 
-    if save:
+    if savePlot:
         fname = c.MEDIA + "{}_UnivariateEffect_{}".format(param.name, datetime.now().strftime("%Y_%m_%d_%H_%M"))
         plt.savefig(fname)
     
+    # print()
+
+    return
+
+def sunEtalHardwareFunc(camera:StarTracker, star_angle:float=np.random.uniform(0, 10))->float:
+
+    c = camera
+
+    beta = np.deg2rad(star_angle)
+    theta = np.deg2rad(c.array_tilt.value)
+    
+    f1 = (c.f_len.value + (c.ppt_acc.value * np.tan(theta)))/np.cos(theta + beta)
+    f2 = c.ppt_acc.value/np.cos(theta)
+    f3 = f2/c.f_len.ideal
+
+    eA_a = np.arctan((f1*np.sin(beta) + f2 + c.ctr_acc.value + c.distortion.value)/c.f_len.ideal)
+    eA_b = np.arctan(f3)
+    eA_c = beta
+
+    eA = eA_a - eA_b - eA_c
+
+    return np.rad2deg(eA)*3600
+
+def runMonteCarlo(cam:StarTracker, params:tuple[Parameter], numRuns:int=1_000)->pd.DataFrame:
+
+    data = np.zeros(numRuns)    # preallocate space
+    star_angle = np.zeros(numRuns)
+
+    # start monte carlo analysis
+    with alive_bar(numRuns, title='Running Monte Carlo Analysis') as bar:
+        for i in range(numRuns):
+            for param in params:
+                param.modulate()
+
+            # set star incident angle [deg]
+            angle = np.random.uniform(0, 10)
+
+            # store data in arrays
+            star_angle[i] = angle
+            data[i] = sunEtalHardwareFunc(cam, star_angle=angle)
+            
+            bar()
+
+    # store data in frame
+    frame = {
+                'StarAngle': star_angle,
+                'Mismatch': data,
+            }
+
+    return pd.DataFrame(frame)
+
+def runSurfaceSim(cam:StarTracker, param:Parameter, maxAngle:float=10, gridSize:int=1_000)->None:
+
+    param_range = np.linspace(param.minRange, param.maxRange, gridSize)
+    angle_range = np.linspace(0, maxAngle, gridSize)
+
+    param_space, angle_space = np.meshgrid(param_range, angle_range)
+
+    data = np.empty((gridSize, gridSize), dtype=float)
+
+    simname = 'Mapping {} Surface:'.format(param.name)
+
+    with alive_bar(gridSize*gridSize, title=simname) as bar:
+        for i in range(gridSize):
+            for j in range(gridSize):
+                param.value = param_space[i][j]
+                angle = angle_space[i][j]
+
+                data[i][j] = sunEtalHardwareFunc(cam, angle)
+
+                bar()
+    
+    frame = {
+                'AngleSpace': angle_space.flatten(),
+                param.name : param_space.flatten(),
+                'Data': data.flatten()
+            }
+
+    return pd.DataFrame(frame)
+
+def monteCarlo(cam:StarTracker, *params:Parameter, numRuns:int=1_000)->None:
+
+    print(cam)  # print cam info
+
+    # if no params were passed in then modulate all params
+    if len(params) == 0:
+        params = (cam.f_len, cam.array_tilt, cam.distortion, cam.ppt_acc, cam.ctr_acc)
+
+    for param in params:
+        print('Modulating {}'.format(param.name))
     print()
+
+    starframe = runMonteCarlo(cam=cam, params=params, numRuns=numRuns)
+    _dispMonteCarloResults(starframe=starframe, numStars=cam._num_stars)
+
+    return
+
+def surfaceSim(cam:StarTracker, *params:Parameter, maxAngle:float=10, numRuns:int=1_000, save:bool=False)->pd.DataFrame:
+
+    # determine size of grid 
+    gridSize = int(np.sqrt(numRuns))
+
+    # set parameters if empty
+    if len(params) == 0:
+        params = (cam.f_len, cam.array_tilt, cam.distortion, cam.ppt_acc, cam.ctr_acc)
+
+    # run surface sim
+    for param in params:
+        starframe = runSurfaceSim(cam=cam, param=param, maxAngle=maxAngle, gridSize=gridSize)
+        _plotSurfaceSimResults(starframe, param=param, savePlot=save)
+    
+    plt.show()
 
     return
 
@@ -127,20 +208,14 @@ def parseArguments()->argparse.Namespace:
 if __name__ == '__main__':
     args = parseArguments()
 
-    ideal_cam = Camera(cam_json=c.IDEAL_CAM)
-    sim_cam = Camera(cam_json=c.SUNETAL_CAM)
-    alvium_cam = Camera(cam_json=c.ALTIUM_CAM)
-
-    alvium_cam._num_stars = 7
+    ideal_cam = StarTracker(cam_json=c.IDEAL_CAM)
+    sim_cam = StarTracker(cam_json=c.SUNETAL_CAM)
+    alvium_cam = StarTracker(cam_json=c.ALVIUM_CAM)
 
     if args.mca:
-        monteCarlo(cam=ideal_cam, numRuns=args.n)
-        monteCarlo(cam=sim_cam, numRuns=args.n)
-        monteCarlo(cam=alvium_cam, numRuns=args.n)
+        monteCarlo(ideal_cam, numRuns=args.n)
+        monteCarlo(sim_cam, numRuns=args.n)
+        monteCarlo(alvium_cam, numRuns=args.n)
 
     if args.surf:
-        surfaceSim(cam=sim_cam, param=sim_cam.f_len, numRuns=args.n)
-        surfaceSim(cam=sim_cam, param=sim_cam.ctr_acc, numRuns=args.n)
-        surfaceSim(cam=sim_cam, param=sim_cam.ppt_acc, numRuns=args.n)
-        surfaceSim(cam=sim_cam, param=sim_cam.array_tilt, numRuns=args.n)
-        surfaceSim(cam=sim_cam, param=sim_cam.distortion, numRuns=args.n)
+        surfaceSim(sim_cam, numRuns=args.n)

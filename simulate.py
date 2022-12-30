@@ -69,6 +69,10 @@ def _plotSurfaceSimResults(starframe:pd.DataFrame, param:Parameter, savePlot:boo
     ax = plt.axes(projection='3d')
     fig.add_axes(ax)
 
+    plt.locator_params(axis='x', nbins=5)
+    plt.locator_params(axis='y', nbins=5)
+    plt.locator_params(axis='z', nbins=5)
+
     fig.set_size_inches(8,6)
     ax.plot_surface(param_space-param.ideal, angle_space, data, cmap='plasma')
 
@@ -203,6 +207,7 @@ def parseArguments()->argparse.Namespace:
     parser.add_argument('-n', help="Number of Runs. Default 1000", type=int, default=1_000)
     parser.add_argument('-mca', help='Run Monte Carlo Simulation', action='store_true')
     parser.add_argument('-surf', help='Run Surface Simulation', action='store_true')
+    parser.add_argument('-s', help='Save plot (bool) for Surface Simulations', action='store_true')
 
     return parser.parse_args()
 
@@ -228,6 +233,4 @@ if __name__ == '__main__':
         # monteCarlo(alvium_cam, numRuns=args.n)
 
     if args.surf:
-        surfaceSim(sim_cam, numRuns=args.n, save=True)
-
-    
+        surfaceSim(sim_cam, numRuns=args.n, save=args.s)

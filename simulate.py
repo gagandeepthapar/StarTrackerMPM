@@ -24,7 +24,7 @@ def _est_StarTracker_Accuracy(mean:float, stddev:float, num_stars:float)->tuple[
 
     print('\nSTAR TRACKER ACCURACY:')
     print('\t{}({}) +/- {}(1{}) Star Mismatch'.format(mean, c.MU, stddev, c.SIGMA))
-    print('\t{}" ~ {}" 3{}-Accuracy'.format(accMin, accMax, c.SIGMA))
+    print('\t{}{}" ~ {}" 3{}-Accuracy{}'.format(c.GREEN,accMin, accMax, c.SIGMA, c.DEFAULT))
 
     return (accMin, accMax)
 
@@ -115,6 +115,7 @@ def runMonteCarlo(cam:StarTracker, params:tuple[Parameter], numRuns:int=1_000)->
 
             # set star incident angle [deg]
             angle = np.random.uniform(-10, 10)
+            # angle = 8.5
 
             # store data in arrays
             star_angle[i] = angle

@@ -24,7 +24,7 @@ def _est_StarTracker_Accuracy(mean:float, stddev:float, num_stars:float)->tuple[
 
     print('\nSTAR TRACKER ACCURACY:')
     print('\t{}({}) +/- {}(1{}) Star Mismatch'.format(mean, c.MU, stddev, c.SIGMA))
-    print('\t{}" ~ {}" 3{}-Accuracy\n'.format(accMin, accMax, c.SIGMA))
+    print('\t{}" ~ {}" 3{}-Accuracy'.format(accMin, accMax, c.SIGMA))
 
     return (accMin, accMax)
 
@@ -43,6 +43,7 @@ def _dispMonteCarloResults(starframe:pd.DataFrame, numStars:float)->None:
                                                                                     c.DEG,
                                                                                     c.SIGMA))
     _est_StarTracker_Accuracy(data_mean, data_std, numStars)
+    print(c.NEWSECTION)
 
     return
 
@@ -77,11 +78,9 @@ def _plotSurfaceSimResults(starframe:pd.DataFrame, param:Parameter, savePlot:boo
     ax.set_title(title)
 
     if savePlot:
-        fname = c.MEDIA + "{}_UnivariateEffect_{}".format(param.name, datetime.now().strftime("%Y_%m_%d_%H_%M"))
+        fname = c.EFFECTPLOTS + "{}_UnivariateEffect_{}".format(param.name, datetime.now().strftime("%Y_%m_%d_%H_%M"))
         plt.savefig(fname)
     
-    # print()
-
     return
 
 def sunEtalHardwareFunc(camera:StarTracker, star_angle:float=np.random.uniform(0, 10))->float:
@@ -115,7 +114,7 @@ def runMonteCarlo(cam:StarTracker, params:tuple[Parameter], numRuns:int=1_000)->
                 param.modulate()
 
             # set star incident angle [deg]
-            angle = np.random.uniform(0, 10)
+            angle = np.random.uniform(-10, 10)
 
             # store data in arrays
             star_angle[i] = angle
@@ -162,6 +161,7 @@ def runSurfaceSim(cam:StarTracker, param:Parameter, maxAngle:float=10, gridSize:
 
 def monteCarlo(cam:StarTracker, *params:Parameter, numRuns:int=1_000)->None:
 
+    print(c.NEWSECTION)
     print(cam)  # print cam info
 
     # if no params were passed in then modulate all params
@@ -213,9 +213,20 @@ if __name__ == '__main__':
     alvium_cam = StarTracker(cam_json=c.ALVIUM_CAM)
 
     if args.mca:
-        monteCarlo(ideal_cam, numRuns=args.n)
+        # monteCarlo(ideal_cam, numRuns=args.n)
+
+        sim_cam.reset_params()
         monteCarlo(sim_cam, numRuns=args.n)
-        monteCarlo(alvium_cam, numRuns=args.n)
+
+        sim_cam.ctr_acc = alvium_cam.ctr_acc
+        sim_cam.ctr_acc._color = c.YELLOW
+
+        sim_cam.reset_params()
+        monteCarlo(sim_cam, numRuns=args.n)
+
+        # monteCarlo(alvium_cam, numRuns=args.n)
 
     if args.surf:
-        surfaceSim(sim_cam, numRuns=args.n)
+        surfaceSim(sim_cam, numRuns=args.n, save=True)
+
+    

@@ -1,8 +1,5 @@
 import os
 
-import numpy as np
-import pandas as pd
-
 """ SOURCE FOR UTIL FUNCS, FILEPATHS """
 
 """ CURRENT FILE """
@@ -17,8 +14,23 @@ ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
 
 """ MEDIA """
 MEDIA = os.path.join(curFile, 'media/')
+EFFECTPLOTS = os.path.join(MEDIA, 'effectAnalysis/')
+TOOLSCREENS = os.path.join(MEDIA, 'inAction/')
 
 """ SYMBOLS """
 MU = "\u03BC"
 SIGMA = "\u03C3"
 DEG = "\u00B0"
+NEWLINE = '*'*100
+
+""" COLORS """
+MAGENTA = '\033[95m'
+BLUE = '\033[94m'
+CYAN = '\033[96m'
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+RED = '\033[91m'
+DEFAULT = '\033[0m'    
+
+""" FREQ USE """
+NEWSECTION = '{}{}{}'.format(RED, NEWLINE, DEFAULT)

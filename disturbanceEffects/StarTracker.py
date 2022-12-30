@@ -35,10 +35,9 @@ class StarTracker:
         f_len_mm = self._set_parameter(focal_length, "FOCAL_LENGTH")
         self._fov = self._set_img_fov(f_len_mm=f_len_mm)
 
-        f_len_px = f_len_mm.ideal / np.sqrt(self._pixelX**2 + self._pixelY**2)
+        f_len_px = f_len_mm.ideal / self._pixelX
         self.f_len = Parameter(ideal=f_len_px, stddev=f_len_mm._err_stddev, mean=f_len_mm._err_mean, name=f_len_mm.name)
 
-        
         self._num_stars = self._set_est_num_stars()
         
         self.reset_params()

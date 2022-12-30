@@ -11,13 +11,14 @@ import json
 
 class Parameter:
 
-    def __init__(self, ideal:float, stddev:float, mean:float=0, name:str=None)->None:
+    def __init__(self, ideal:float, stddev:float, mean:float=0, name:str=None, color:str=c.DEFAULT)->None:
 
         self.ideal = ideal
         self.name = name
 
         self._err_mean = mean
         self._err_stddev = stddev
+        self._color = color
     
         self.range = self._err_mean + (3*self._err_stddev)
         self.minRange = self.ideal - self.range
@@ -28,7 +29,7 @@ class Parameter:
         return
     
     def __repr__(self)->str:
-        pname = '{}: {} [{}(\u03BC) +/- {}(3\u03C3)]'.format(self.name, np.round(self.value,3), self.ideal, 3*self._err_stddev)
+        pname = '{}{}: {} [{}(\u03BC) +/- {}(3\u03C3)]{}'.format(self._color, self.name, np.round(self.value,3), self.ideal, 3*self._err_stddev, c.DEFAULT)
         return pname 
 
     def modulate(self)->float:

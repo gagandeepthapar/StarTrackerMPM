@@ -11,7 +11,6 @@ import constants as c
 from disturbanceEffects.Parameter import Parameter
 from disturbanceEffects.StarTracker import StarTracker
 
-
 def _est_StarTracker_Accuracy(mean:float, stddev:float, num_stars:float)->tuple[float]:
 
     stddev_range = 3*stddev
@@ -135,7 +134,7 @@ def runMonteCarlo(cam:StarTracker, params:tuple[Parameter], numRuns:int=1_000)->
 
     return pd.DataFrame(frame)
 
-def runSurfaceSim(cam:StarTracker, param:Parameter, maxAngle:float=10, gridSize:int=1_000)->None:
+def runSurfaceSim(cam:StarTracker, param:Parameter, maxAngle:float=10, gridSize:int=1_000)->pd.DataFrame:
 
     param_range = np.linspace(param.minRange, param.maxRange, gridSize)
     angle_range = np.linspace(0, maxAngle, gridSize)
@@ -182,7 +181,7 @@ def monteCarlo(cam:StarTracker, *params:Parameter, numRuns:int=1_000)->None:
 
     return
 
-def surfaceSim(cam:StarTracker, *params:Parameter, maxAngle:float=10, numRuns:int=1_000, save:bool=False)->pd.DataFrame:
+def surfaceSim(cam:StarTracker, *params:Parameter, maxAngle:float=10, numRuns:int=1_000, save:bool=False)->None:
 
     # determine size of grid 
     gridSize = int(np.sqrt(numRuns))

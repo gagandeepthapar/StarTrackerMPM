@@ -19,7 +19,6 @@ class Parameter:
         self._err_mean = mean
         self._err_stddev = stddev
         self._color = color
-
         self.range = self._err_mean + (3*self._err_stddev)
         self.minRange = self.ideal - self.range
         self.maxRange = self.ideal + self.range

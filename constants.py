@@ -1,4 +1,5 @@
 import os
+import numpy as np
 
 """ SOURCE FOR UTIL FUNCS, FILEPATHS """
 
@@ -11,6 +12,7 @@ SUNETAL_CAM = os.path.join(curFile, 'utils/', 'sunEtalCamera.json')
 ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
 
 """ SATELLITE/MATERIAL PROPERTIES """
+ISSORBIT = os.path.join(curFile, 'utils/','issOrbit.json')
 
 """ MEDIA """
 MEDIA = os.path.join(curFile, 'media/')
@@ -34,3 +36,16 @@ DEFAULT = '\033[0m'
 
 """ FREQ USE """
 NEWSECTION = '{}{}{}'.format(RED, NEWLINE, DEFAULT)
+
+""" USEFUL FUNCS """
+def cosd(theta:float)->float:
+    return np.cos(np.deg2rad(theta))
+
+def sind(theta:float)->float:
+    return np.sin(np.deg2rad(theta))
+
+def acosd(val:float)->float:
+    return np.rad2deg(np.arccos(val))
+
+def asind(val:float)->float:
+    return np.rad2deg(np.arcsin(val))

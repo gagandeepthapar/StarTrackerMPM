@@ -9,6 +9,7 @@ except:
     sys.path.append(sys.path[0] + '/..')
     import constants as c
 
+import json
 # from .Parameter import Parameter
 # from .StarTracker import StarTracker
 
@@ -48,11 +49,14 @@ class COES:
     def createOrbit(self)->None:
         return Orbit.init_from_Element(self)
     
-    def __calc_semimajor(self)->float:
-        return 0
+    def __calc_semimajor(self, mu:float=398600)->float:
+        rp = self.h**2 / mu * 1/(1 + self.ecc)
+        ra = self.h**2 / mu * 1/(1 - self.ecc)
+        return 0.5*(ra + rp)
 
-    def __calc_period(self)->float:
-        return 100*60
+    def __calc_period(self, mu:float=398600)->float:
+        t = 2*np.pi * self.a**1.5 / np.sqrt(mu)
+        return t
 
 @dataclass
 class StateVector:
@@ -107,6 +111,8 @@ class Orbit:
         self.RV0 = RV if RV is not None else self.__coes_to_state(Elements)
         self.COES = Elements if Elements is not None else self.__state_to_coes(RV)
 
+        self.__propagate_orbit()
+
         return
 
     def __repr__(self)->None:
@@ -121,8 +127,36 @@ class Orbit:
     def init_from_Element(Elements:COES)->None:
         return Orbit(Elements=Elements)
 
-    def ambient_temp(self)->float:
-        return np.random.normal(loc=312, scale=30)
+    def init_from_json(fp:str)->None:
+
+        file = json.load(open(fp))
+
+        if file['TYPE'] == 'STATEVECTOR':
+            rx = file['RX']
+            ry = file['RY']
+            rz = file['RZ']
+            vx = file['VX']
+            vy = file['VY']
+            vz = file['VZ']
+            
+            state = StateVector(rx, ry, rz, vx, vy, vz)
+            return Orbit.init_from_State(state)
+        
+        if file['TYPE'] == 'COES':
+            h = file['h']
+            ecc = file['ecc']
+            inc = file['inc']
+            raan = file['raan']
+            arg = file['arg']
+            theta = file['theta']
+
+            coes = COES(h, ecc, inc, raan, arg, theta)
+            return Orbit.init_from_Element(coes)
+        
+        raise ValueError(f'{c.RED}Improper JSON Import for Orbit Creation{c.DEFAULT}')
+
+    def get_temp(self)->float:
+        return np.random.uniform(273.15, 333.15)
 
     def plot_orbit(self, satellite:np.ndarray=None, earth:bool=False, jd:float=None)->None:
         # check trajectory
@@ -161,31 +195,74 @@ class Orbit:
             randcoes = self.COES
             randcoes.theta = theta
 
-            satellite_pos = self._coes_to_state(randcoes)
+            satellite_pos = self.__coes_to_state(randcoes)
         
         sunpos = self.__solar_position(jd)
 
-        
-        ax.scatter(*satellite_pos, c='r', label='Satellite Position')
-        ax.quiver(*satellite_pos, *sunpos, color='g', length=3000, label='Direction to Sun')
-
+        pos = satellite_pos.to_array()
+        ax.scatter(pos[0], pos[1], pos[2], c='r', label='Satellite Position')
+        ax.quiver(pos[0], pos[1], pos[2], *sunpos, color='g', length=self.COES.a/2, label='Direction to Sun')
         # add legend, show plot
-        # print(legenditems)
-        ax.legend()
+        # ax.legend()
         ax.axis('equal')
         plt.show()
 
         return
 
     def __state_to_coes(self, RV:StateVector)->COES:
-        #TODO: implement 
-        return 5
+        R = np.array([RV.rx, RV.ry, RV.rz])
+        V = np.array([RV.vx, RV.vy, RV.vz])
+
+        r = np.linalg.norm(R)
+        v = np.linalg.norm(V)
+        v_r = np.dot(R,V)/r
+
+        h_bar = np.cross(R, V)
+        h = np.linalg.norm(h_bar)
+
+        inc = c.acosd(h_bar[2]/h)
+
+        n_bar = np.cross(np.array([0, 0, 1]), h_bar)
+        n = np.linalg.norm(n_bar)
+
+        if n != 0:
+            raan = c.acosd(n_bar[0]/n)
+            if n_bar[1] < 0:
+                raan = 360 - raan
+        else:
+            raan = 0
+        
+        ecc_bar = 1/self.mu * ((v**2 - self.mu/r)*R - r*v_r*V)
+        ecc = np.linalg.norm(ecc_bar)
+
+        if n != 0:
+            arg = c.acosd(np.dot(n_bar, ecc_bar)/(n*ecc))
+            if ecc_bar[2] < 0:
+                arg = 360 - arg
+        else:
+            arg = 0
+        
+        theta = c.acosd(np.dot(ecc_bar, R)/(ecc*r))
+
+        if v_r < 0:
+            theta = 360 - theta
+
+        return COES(h=h, ecc=ecc, inc=inc, raan=raan, arg=arg, theta=theta)
     
     def __coes_to_state(self, Elements:COES)->StateVector:
-        #TODO: implement
-        return 0
+        coes = Elements
 
-    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=1, *, J2:bool=False, Drag:bool=False, SRP:bool=False, NBody:bool=False)->None:
+        peri_r = coes.h**2 / self.mu * (1/(1 + coes.ecc*c.cosd(coes.theta))) * np.array([[c.cosd(coes.theta)],[c.sind(coes.theta)], [0]])
+        peri_v = self.mu / coes.h * np.array([[-c.sind(coes.theta)], [coes.ecc + c.cosd(coes.theta)], [0]])
+
+        Q_bar = self.__R3(coes.arg) @ self.__R1(coes.inc) @ self.__R3(coes.raan)
+
+        r = np.transpose(Q_bar) @ peri_r
+        v = np.transpose(Q_bar) @ peri_v
+
+        return StateVector(*r, *v) 
+
+    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=1)->None:
         if tspan is None:
             tspan = (0, self.COES.T)
 
@@ -202,7 +279,7 @@ class Orbit:
         state = self.RV0.to_array()
 
         for i in range(1, steps):
-            dstate = self.__two_body(state, J2=J2, Drag=Drag, SRP=SRP, NBody=NBody)
+            dstate = self.__two_body(state)
             state = state + dstate*tstep
 
             self._rx_traj[i] = state[0]
@@ -214,13 +291,13 @@ class Orbit:
     def __solar_position(self, jd:float)->bool:
         #TODO: implement solar position
 
-        a = np.random.uniform(-1, 1)
-        b = np.random.uniform(-1, 1)
-        c = np.random.uniform(-1, 1)
+        a = np.random.randint(-1, 1)
+        b = np.random.randint(-1, 1)
+        c = np.random.randint(-1, 1)
 
         return np.array([a,b,c])
 
-    def __two_body(self, state:np.ndarray, mu:float=None, *, J2:bool=False, Drag:bool=False, SRP:bool=False, NBody:bool=False)->np.ndarray:
+    def __two_body(self, state:np.ndarray, mu:float=None)->np.ndarray:
         if mu is None:
             mu = self.mu
 
@@ -233,39 +310,12 @@ class Orbit:
         vy = state[4]
         vz = state[5]
 
-        # calc perturbations
-        aPert = np.array([0,0,0])
-        
-        if J2:
-            aPert += self.__calcJ2()
-        
-        if Drag:
-            aPert += self.__calcDrag()
-        
-        if SRP:
-            aPert += self.__calcSRP()
-
-        if NBody:
-            aPert += self.__calcNBody()
-
-        ax = -mu * rx / (R**3) + aPert[0]
-        ay = -mu * ry / (R**3) + aPert[1]
-        az = -mu * rz / (R**3) + aPert[2]
+        ax = -mu * rx / (R**3)
+        ay = -mu * ry / (R**3)
+        az = -mu * rz / (R**3)
 
         return np.array([vx, vy, vz, ax, ay, az])
     
-    def __calcJ2(self)->np.ndarray:
-        return np.array([0,0,0])
-
-    def __calcDrag(self)->np.ndarray:
-        return np.array([0,0,0])
-    
-    def __calcSRP(self)->np.ndarray:
-        return np.array([0,0,0])
-
-    def __calcNBody(self)->np.ndarray:
-        return np.array([0,0,0])
-
     def __create_earth_model(self, R:float=None)->None:
         if R is None:
             R = self.rad
@@ -285,3 +335,10 @@ class Orbit:
 
         return
 
+    def __R1(self, theta:float)->np.ndarray:
+        R = np.array([[1, 0, 0], [0, c.cosd(theta), c.sind(theta)], [0, -c.sind(theta), c.cosd(theta)]])
+        return R
+    
+    def __R3(self, theta:float)->np.ndarray:
+        R = np.array([[c.cosd(theta), c.sind(theta), 0], [-c.sind(theta), c.cosd(theta), 0], [0, 0, 1]])
+        return R

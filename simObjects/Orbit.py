@@ -9,7 +9,6 @@ except:
     sys.path.append(sys.path[0] + '/..')
     import constants as c
 
-
 # from .Parameter import Parameter
 # from .StarTracker import StarTracker
 

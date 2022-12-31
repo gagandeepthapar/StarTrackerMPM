@@ -11,7 +11,7 @@ import json
 
 class Parameter:
 
-    def __init__(self, ideal:float, stddev:float, mean:float=0, name:str=None, color:str=c.DEFAULT)->None:
+    def __init__(self, ideal:float, stddev:float, mean:float=0, name:str=None, units:str=None, color:str=c.DEFAULT)->None:
 
         self.ideal = ideal
         self.name = name
@@ -19,17 +19,21 @@ class Parameter:
         self._err_mean = mean
         self._err_stddev = stddev
         self._color = color
-    
+
         self.range = self._err_mean + (3*self._err_stddev)
         self.minRange = self.ideal - self.range
         self.maxRange = self.ideal + self.range
+
+        if units == "deg":
+            units = c.DEG
+        self.units = units
 
         self.modulate()
 
         return
     
     def __repr__(self)->str:
-        pname = '{}{}: {} [{}(\u03BC) +/- {}(3\u03C3)]{}'.format(self._color, self.name, np.round(self.value,3), self.ideal, 3*self._err_stddev, c.DEFAULT)
+        pname = f'{self._color}{self.name}: {np.round(self.value,3)}{self.units} [{self.ideal+self._err_mean}({c.MU}) +/- {3*self._err_stddev}(3{c.SIGMA})]{c.DEFAULT}'
         return pname 
 
     def modulate(self)->float:
@@ -50,5 +54,6 @@ class Parameter:
         ideal = camDict[name+"_IDEAL"]
         mean = camDict[name+"_MEAN"]
         stddev = camDict[name+"_STDDEV"]/3
+        units = camDict[name+"_UNITS"]
 
-        return Parameter(ideal=ideal, stddev=stddev, mean=mean, name=name)
+        return Parameter(ideal=ideal, stddev=stddev, mean=mean, name=name, units=units)

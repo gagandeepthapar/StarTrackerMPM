@@ -8,8 +8,8 @@ import pandas as pd
 from alive_progress import alive_bar
 
 import constants as c
-from disturbanceEffects.Parameter import Parameter
-from disturbanceEffects.StarTracker import StarTracker
+from simObjects.Parameter import Parameter
+from simObjects.StarTracker import StarTracker
 
 def _est_StarTracker_Accuracy(mean:float, stddev:float, num_stars:float)->tuple[float]:
 

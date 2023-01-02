@@ -74,6 +74,21 @@ class COES:
         t = 2*np.pi * self.a**1.5 / np.sqrt(mu)
         return t
 
+    def create_random(a_range:tuple[float]=(6778, 6978),
+                      ecc_range:tuple[float]=(0, 0.1),
+                      inc_range:tuple[float]=(0, 90),
+                      raan_range:tuple[float]=(0, 360),
+                      arg_range:tuple[float]=(0, 360),
+                      theta_range:tuple[float]=(0, 360))->None:
+
+        a = np.random.uniform(a_range[0], a_range[1])
+        ecc = np.random.uniform(ecc_range[0], ecc_range[1])
+        inc = np.random.uniform(inc_range[0], inc_range[1])
+        raan = np.random.uniform(raan_range[0], raan_range[1])
+        arg = np.random.uniform(arg_range[0], arg_range[1])
+        theta = np.random.uniform(theta_range[0], theta_range[1])
+        return COES(ecc, inc, raan, arg, theta, a=a)
+
 class StateVector:
     def __init__(self, rx:float, ry:float, rz:float, vx:float, vy:float, vz:float):
         self.rx = rx
@@ -367,8 +382,3 @@ class Orbit:
         R = np.array([[c.cosd(theta), c.sind(theta), 0], [-c.sind(theta), c.cosd(theta), 0], [0, 0, 1]])
         return R
 
-
-# state = StateVector(-26175.1034, 12757.0706, 14626.6566, 2.376441, 0.139677, 2.078097)
-# rv:Orbit = Orbit.init_from_State(RV=state)
-# rv.plot_alt(tspan=(0, rv.COES.T * 2))
-# plt.show()

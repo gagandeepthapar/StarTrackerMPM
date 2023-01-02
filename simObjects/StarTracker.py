@@ -38,7 +38,7 @@ class StarTracker:
         f_len_px = f_len_mm.ideal / self._pixelX
         self.f_len = Parameter(ideal=f_len_px, stddev=f_len_mm._err_stddev, mean=f_len_mm._err_mean, name=f_len_mm.name, units='px')
 
-        self._num_stars = self._set_est_num_stars()
+        self._num_stars = self.__set_est_num_stars()
         
         self.reset_params()
 
@@ -92,7 +92,7 @@ class StarTracker:
 
         return fov
 
-    def _set_est_num_stars(self)->float:
+    def __set_est_num_stars(self)->float:
         return 4
 
     def modulate_centroid(self)->float:
@@ -118,3 +118,5 @@ class StarTracker:
         self.distortion.reset()
         return
     
+    def all_params(self)->tuple[Parameter]:
+        return [self.f_len, self.array_tilt, self.ctr_acc, self.distortion, self.ppt_acc]

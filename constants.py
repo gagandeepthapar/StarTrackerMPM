@@ -49,3 +49,13 @@ def acosd(val:float)->float:
 
 def asind(val:float)->float:
     return np.rad2deg(np.arcsin(val))
+
+""" CONSTANTS """
+SOLARFLUX = 1337
+EARTHMU = 398600
+EARTHRAD = 6378
+CUBESAT1USIDE = 0.1
+CUBESAT3USIDE = 0.3
+AU = 149597870.691
+J2000 = 2451545
+JYEAR = 365.25 

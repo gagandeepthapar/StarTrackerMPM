@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from dataclasses import dataclass
+import pandas as pd
+from scipy.integrate import solve_ivp
+from scipy.integrate._ivp.ivp import OdeResult
 
 try:
     from StarTrackerMPM import constants as c
@@ -10,62 +12,76 @@ except:
     import constants as c
 
 import json
+
 # from .Parameter import Parameter
 # from .StarTracker import StarTracker
 
-@dataclass
 class COES:
-    h:      float
-    ecc:    float
-    inc:    float
-    raan:   float
-    arg:    float
-    theta:  float
+    def __init__(self, ecc:float, inc:float, raan:float, arg:float, theta:float, *, h:float=None, a:float=None)->None:
 
-    def __post_init__(self)->None:
-        #TODO: implement semi major and period
-        
-        self.a:float = self.__calc_semimajor()
-        self.T:float = self.__calc_period()
+        if not self.__check_params(h, a):
+            raise ValueError('{}Provide either h [km3/s2] or a [km]{}'.format(c.RED, c.DEFAULT)) 
+
+        self.h = h if h is not None else self.__calc_ang_mom(a, ecc)
+        self.a = a if a is not None else self.__calc_semimajor(h, ecc)
+
+        self.ecc = ecc
+        self.inc = inc
+        self.raan = raan
+        self.arg = arg
+        self.theta = theta
+        self.T = self.__calc_period()
+
         return
 
     def __repr__(self)->str:
         name = "Orbital Elements:"\
                     "\n\th:\t{}\t[km3/s2]"\
+                    "\n\ta:\t{}\t[km]"\
                     "\n\tecc:\t{}\t[~]"\
                     "\n\tinc:\t{}\t[deg]"\
                     "\n\traan:\t{}\t[deg]"\
                     "\n\targ:\t{}\t[deg]"\
                     "\n\ttheta:\t{}\t[deg]".format(self.h, 
+                                                self.a,
                                                 self.ecc,
                                                 self.inc,
                                                 self.raan,
                                                 self.arg,
                                                 self.theta)
 
-
         return name
 
     def createOrbit(self)->None:
         return Orbit.init_from_Element(self)
+
+    def __check_params(self, h:float, a:float)->bool:
+        haveH = h is not None
+        haveA = a is not None
+
+        if haveH ^ haveA:
+            return True
+
+        return False
+
+    def __calc_ang_mom(self, a:float, ecc:float, mu:float=398600)->float:
+        return np.sqrt(a * mu * (1 - ecc**2))
     
-    def __calc_semimajor(self, mu:float=398600)->float:
-        rp = self.h**2 / mu * 1/(1 + self.ecc)
-        ra = self.h**2 / mu * 1/(1 - self.ecc)
-        return 0.5*(ra + rp)
+    def __calc_semimajor(self, h:float, ecc:float, mu:float=398600)->float:
+        return h**2 / (mu * (1 - ecc**2))
 
     def __calc_period(self, mu:float=398600)->float:
         t = 2*np.pi * self.a**1.5 / np.sqrt(mu)
         return t
 
-@dataclass
 class StateVector:
-    rx:     float
-    ry:     float
-    rz:     float
-    vx:     float
-    vy:     float
-    vz:     float
+    def __init__(self, rx:float, ry:float, rz:float, vx:float, vy:float, vz:float):
+        self.rx = rx
+        self.ry = ry
+        self.rz = rz
+        self.vx = vx
+        self.vy = vy
+        self.vz = vz
 
     def __repr__(self)->str:
         name = "State Vector:"\
@@ -85,6 +101,9 @@ class StateVector:
     
     def to_array(self)->np.ndarray:
         return np.array([self.rx, self.ry, self.rz, self.vx, self.vy, self.vz])
+
+    def position(self)->np.ndarray:
+        return (self.to_array()[0:3].reshape((1,3)))[0]
 
     def createOrbit(self)->None:
         return Orbit.init_from_State(self)
@@ -111,7 +130,7 @@ class Orbit:
         self.RV0 = RV if RV is not None else self.__coes_to_state(Elements)
         self.COES = Elements if Elements is not None else self.__state_to_coes(RV)
 
-        self.__propagate_orbit()
+        self.trajectory = self.propagate_orbit()
 
         return
 
@@ -121,17 +140,18 @@ class Orbit:
                 "\n\t{}".format(repr(self.COES), repr(self.RV0))
         return name
 
-    def init_from_State(RV:StateVector)->None:
-        return Orbit(RV=RV)
-    
-    def init_from_Element(Elements:COES)->None:
-        return Orbit(Elements=Elements)
+    def init_from_State(RV:StateVector=None, fp:str=None)->None:
 
-    def init_from_json(fp:str)->None:
+        if RV is None and fp is None:
+            raise ValueError('Provide at least State Vector or Path to State Vector JSON')
 
-        file = json.load(open(fp))
+        if fp is None:
+            return Orbit(RV=RV)
+        
+        if RV is None:
+            with open(fp) as fp_open:
+                file = json.load(fp_open)
 
-        if file['TYPE'] == 'STATEVECTOR':
             rx = file['RX']
             ry = file['RY']
             rz = file['RZ']
@@ -140,9 +160,19 @@ class Orbit:
             vz = file['VZ']
             
             state = StateVector(rx, ry, rz, vx, vy, vz)
-            return Orbit.init_from_State(state)
+            return Orbit(RV=state)
+    
+    def init_from_Element(Elements:COES=None, fp:str=None)->None:
+        if Elements is None and fp is None:
+            raise ValueError('Provide at least Orbital Elements or Path to Orbital Elements JSON') 
         
-        if file['TYPE'] == 'COES':
+        if fp is None:
+            return Orbit(Elements=Elements)
+        
+        if Elements is None:
+            with open(fp) as fp_open:
+                file = json.load(fp_open)
+
             h = file['h']
             ecc = file['ecc']
             inc = file['inc']
@@ -151,61 +181,34 @@ class Orbit:
             theta = file['theta']
 
             coes = COES(h, ecc, inc, raan, arg, theta)
-            return Orbit.init_from_Element(coes)
+            return Orbit(Elements=coes)
+
+    def init_from_json(fp:str)->None:
+
+        with open(fp) as fp_open:
+            file = json.load(fp_open)
+
+        if file['TYPE'] == 'STATEVECTOR':
+            return Orbit.init_from_State(fp=fp)
+        
+        if file['TYPE'] == 'COES':
+            return Orbit.init_from_Element(fp=fp)
         
         raise ValueError(f'{c.RED}Improper JSON Import for Orbit Creation{c.DEFAULT}')
 
     def get_temp(self)->float:
         return np.random.uniform(273.15, 333.15)
 
-    def plot_orbit(self, satellite:np.ndarray=None, earth:bool=False, jd:float=None)->None:
-        # check trajectory
-        if self._rx_traj is None:
-            self.__propagate_orbit()
+    def plot_alt(self, tspan:tuple=None, t_eval:np.ndarray=None)->None:
 
-        # plot setup
+        traj_frame = self.trajectory
+        if tspan is not None:
+            traj_frame = self.propagate_orbit(tspan=tspan,t_eval=t_eval)
+
         fig = plt.figure()
+        ax = fig.add_subplot()
 
-        ax = plt.axes(projection='3d')
-        ax.axis('equal')
-
-        plt.locator_params(axis='x', nbins=5)
-        plt.locator_params(axis='y', nbins=5)
-        plt.locator_params(axis='z', nbins=5)
-
-        xlbl = 'x [km]'
-        ylbl = 'y [km]'
-        zlbl = 'z [km]'
-        title = 'Orbit Trajectory'
-
-        ax.set_xlabel(xlbl)
-        ax.set_ylabel(ylbl)
-        ax.set_zlabel(zlbl)
-        ax.set_title(title)
-
-        # plot data
-        ax.plot(self._rx_traj, self._ry_traj, self._rz_traj, 'b--', label='Orbit Path')
-
-        if earth:
-            self.__create_earth_model()
-            ax.plot_surface(self.__earth_model_X, self.__earth_model_Y, self.__earth_model_Z, alpha=0.2, label='Earth Model')
-        
-        if satellite is None:
-            theta = np.random.uniform(0, 360)
-            randcoes = self.COES
-            randcoes.theta = theta
-
-            satellite_pos = self.__coes_to_state(randcoes)
-        
-        sunpos = self.__solar_position(jd)
-
-        pos = satellite_pos.to_array()
-        ax.scatter(pos[0], pos[1], pos[2], c='r', label='Satellite Position')
-        ax.quiver(pos[0], pos[1], pos[2], *sunpos, color='g', length=self.COES.a/2, label='Direction to Sun')
-        # add legend, show plot
-        # ax.legend()
-        ax.axis('equal')
-        plt.show()
+        ax.plot(traj_frame['TIME'], traj_frame['ALT'])
 
         return
 
@@ -262,42 +265,82 @@ class Orbit:
 
         return StateVector(*r, *v) 
 
-    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=1)->None:
+    def propagate_orbit(self, tspan:tuple[float]=None, t_eval:tuple=None)->None:
         if tspan is None:
             tspan = (0, self.COES.T)
+        
+        if t_eval is None:
+            t_eval = np.linspace(tspan[0], tspan[1], 1000)
 
-        steps = int((tspan[1] - tspan[0])/tstep)
+        state0 = self.RV0.to_array().reshape((1,6))[0]
+        dstate = solve_ivp(self.__two_body, tspan, state0, t_eval=t_eval)
+        
+        trajdict = {
+                    'TIME': dstate['t'],
+                    
+                    'POS_X': dstate['y'][0],
+                    'POS_Y': dstate['y'][1],
+                    'POS_Z': dstate['y'][2],
+                    
+                    'VE:_X': dstate['y'][3],
+                    'VEL_Y': dstate['y'][4],
+                    'VEL_Z': dstate['y'][5] 
+                    }
 
-        self._rx_traj = np.empty(steps)
-        self._ry_traj = np.empty(steps)
-        self._rz_traj = np.empty(steps)
-
-        self._rx_traj[0] = self.RV0.rx
-        self._ry_traj[0] = self.RV0.ry
-        self._rz_traj[0] = self.RV0.rz
-
-        state = self.RV0.to_array()
-
-        for i in range(1, steps):
-            dstate = self.__two_body(state)
-            state = state + dstate*tstep
-
-            self._rx_traj[i] = state[0]
-            self._ry_traj[i] = state[1]
-            self._rz_traj[i] = state[2]
-
-        return
+        trajframe = pd.DataFrame(trajdict)
+        posframe = trajframe[['POS_X', 'POS_Y', 'POS_Z']]
+        trajframe['ALT'] = posframe.apply(self.__calc_altitude, axis=1)
+        
+        return trajframe
     
-    def __solar_position(self, jd:float)->bool:
-        #TODO: implement solar position
+    def __calc_altitude(self, row)->pd.DataFrame:
+        return np.linalg.norm(row) - self.rad
 
-        a = np.random.randint(-1, 1)
-        b = np.random.randint(-1, 1)
-        c = np.random.randint(-1, 1)
+    def __solar_position(self, jd:float)->np.ndarray:
+        """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
 
-        return np.array([a,b,c])
+        Calculates vector pointing from earth to sun based on Julian Date
 
-    def __two_body(self, state:np.ndarray, mu:float=None)->np.ndarray:
+        Args:
+            jd (float): julian date
+
+        Returns:
+            np.ndarray: vector pointing to sun
+        """
+
+        jd_count = jd - c.J2000
+        jd_count_cent = jd_count/36525
+
+        mean_anom = 357.528 + 0.9856003*jd_count
+        mean_anom = np.mod(mean_anom, 360)
+
+        mean_long = 280.460 + 0.98564736*jd_count
+        mean_long = np.mod(mean_long, 360)
+
+        eclip_long = mean_long + 1.915*c.sind(mean_anom) + 0.020*c.sind(2*mean_anom)
+        eclip_long = np.mod(eclip_long, 360)
+
+        obliquity = 23.439 - 0.0000004*jd_count
+
+        x = c.cosd(eclip_long)
+        y = c.sind(eclip_long)*c.cosd(obliquity)
+        z = c.sind(eclip_long)*c.sind(obliquity)
+
+        R = (1.00014 - 0.01671*c.cosd(mean_anom) - 0.000140*c.cosd(2*mean_anom))*c.AU
+
+        return R*np.array([x,y,z])
+
+    def __solar_line_of_sight(self, jd:float)->bool:
+        R_earth_sun = self.__solar_position(jd)
+        R_earth_sc = self.RV0.position()
+
+        theta = np.arccos(np.dot(R_earth_sun,R_earth_sc)/np.linalg.norm(R_earth_sun)*np.linalg.norm(R_earth_sc))
+        thetaA = np.arccos(self.rad/np.linalg.norm(R_earth_sc))
+        thetaB = np.arccos(self.rad/np.linalg.norm(R_earth_sun))
+
+        return (theta + thetaA < thetaB)
+
+    def __two_body(self, t:float, state:np.ndarray, mu:float=None)->np.ndarray:
         if mu is None:
             mu = self.mu
 
@@ -316,25 +359,6 @@ class Orbit:
 
         return np.array([vx, vy, vz, ax, ay, az])
     
-    def __create_earth_model(self, R:float=None)->None:
-        if R is None:
-            R = self.rad
-
-        u = np.linspace(0, 2*np.pi, 100)
-        v = np.linspace(0, np.pi, 100)
-
-        U, V = np.mgrid[0:2 * np.pi:30j, 0:np.pi:20j]
-
-        X = R * np.cos(U) * np.sin(V)
-        Y = R * np.sin(U) * np.sin(V)
-        Z = R * np.cos(V)
-
-        self.__earth_model_X = X
-        self.__earth_model_Y = Y
-        self.__earth_model_Z = Z
-
-        return
-
     def __R1(self, theta:float)->np.ndarray:
         R = np.array([[1, 0, 0], [0, c.cosd(theta), c.sind(theta)], [0, -c.sind(theta), c.cosd(theta)]])
         return R
@@ -342,3 +366,9 @@ class Orbit:
     def __R3(self, theta:float)->np.ndarray:
         R = np.array([[c.cosd(theta), c.sind(theta), 0], [-c.sind(theta), c.cosd(theta), 0], [0, 0, 1]])
         return R
+
+
+# state = StateVector(-26175.1034, 12757.0706, 14626.6566, 2.376441, 0.139677, 2.078097)
+# rv:Orbit = Orbit.init_from_State(RV=state)
+# rv.plot_alt(tspan=(0, rv.COES.T * 2))
+# plt.show()

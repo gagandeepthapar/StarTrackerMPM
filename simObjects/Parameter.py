@@ -25,9 +25,11 @@ class Parameter:
 
         if units == "deg":
             units = c.DEG
+        if units is None:
+            units = ""
         self.units = units
 
-        self.modulate()
+        self.reset()
 
         return
     

@@ -95,21 +95,6 @@ class StarTracker:
     def __set_est_num_stars(self)->float:
         return 4
 
-    def modulate_centroid(self)->float:
-        return self.ctr_acc.modulate()
-    
-    def modulate_principal_point_accuracy(self)->float:
-        return self.ppt_acc.modulate()
-    
-    def modulate_focal_length(self)->float:
-        return self.f_len.modulate()
-    
-    def modulate_array_tilt(self)->float:
-        return self.array_tilt.modulate()
-    
-    def modulate_distortion(self)->float:
-        return self.distortion.modulate()
-
     def reset_params(self)->None:
         self.f_len.reset()
         self.ctr_acc.reset()

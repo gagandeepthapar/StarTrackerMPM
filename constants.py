@@ -13,6 +13,8 @@ ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
 
 """ SATELLITE/MATERIAL PROPERTIES """
 ISSORBIT = os.path.join(curFile, 'utils/','issOrbit.json')
+CUBESATS = os.path.join(curFile, 'utils/', 'celestrakCubeSats.json')
+ACTIVESATS = os.path.join(curFile, 'utils/', 'celestrakActiveSats.json')
 
 """ MEDIA """
 MEDIA = os.path.join(curFile, 'media/')
@@ -44,18 +46,23 @@ def cosd(theta:float)->float:
 def sind(theta:float)->float:
     return np.sin(np.deg2rad(theta))
 
+def tand(theta:float)->float:
+    return np.tan(np.deg2rad(theta))
+
 def acosd(val:float)->float:
     return np.rad2deg(np.arccos(val))
 
 def asind(val:float)->float:
     return np.rad2deg(np.arcsin(val))
 
+def atand(val:float)->float:
+    return np.rad2deg(np.arctan(val))
+
 """ CONSTANTS """
 SOLARFLUX = 1337
 EARTHMU = 398600
 EARTHRAD = 6378
-CUBESAT1USIDE = 0.1
-CUBESAT3USIDE = 0.3
 AU = 149597870.691
 J2000 = 2451545
-JYEAR = 365.25 
+JYEAR = 365.25
+STEFBOLTZ = 5.670367e-8

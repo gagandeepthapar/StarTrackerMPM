@@ -1,6 +1,5 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from dataclasses import dataclass
+import pandas as pd
 
 try:
     from StarTrackerMPM import constants as c
@@ -9,279 +8,261 @@ except:
     sys.path.append(sys.path[0] + '/..')
     import constants as c
 
-# from .Parameter import Parameter
-# from .StarTracker import StarTracker
+from dataclasses import dataclass
+from json import load as jsonload
 
-@dataclass
-class COES:
-    h:      float
-    ecc:    float
-    inc:    float
-    raan:   float
-    arg:    float
-    theta:  float
-
-    def __post_init__(self)->None:
-        #TODO: implement semi major and period
-        
-        self.a:float = self.__calc_semimajor()
-        self.T:float = self.__calc_period()
-        return
-
-    def __repr__(self)->str:
-        name = "Orbital Elements:"\
-                    "\n\th:\t{}\t[km3/s2]"\
-                    "\n\tecc:\t{}\t[~]"\
-                    "\n\tinc:\t{}\t[deg]"\
-                    "\n\traan:\t{}\t[deg]"\
-                    "\n\targ:\t{}\t[deg]"\
-                    "\n\ttheta:\t{}\t[deg]".format(self.h, 
-                                                self.ecc,
-                                                self.inc,
-                                                self.raan,
-                                                self.arg,
-                                                self.theta)
-
-
-        return name
-
-    def createOrbit(self)->None:
-        return Orbit.init_from_Element(self)
-    
-    def __calc_semimajor(self)->float:
-        return 0
-
-    def __calc_period(self)->float:
-        return 100*60
+from alive_progress import alive_bar
+from Parameter import Parameter
 
 @dataclass
 class StateVector:
-    rx:     float
-    ry:     float
-    rz:     float
-    vx:     float
-    vy:     float
-    vz:     float
+    rx:float
+    ry:float
+    rz:float
+    vx:float
+    vy:float
+    vz:float
+    a:float=None
+    mu:float=398600
+
+    def __post_init__(self)->None:
+        self.position = np.array([self.rx, self.ry, self.rz]).reshape((1,3))[0]
+        self.velocity = np.array([self.vx, self.vy, self.vz]).reshape((1,3))[0]
+        self.state = np.array([*self.position, *self.velocity])
+        if self.a is None:
+            self.a = self.__calc_semimajor()
+        return
 
     def __repr__(self)->str:
         name = "State Vector:"\
-                "\n\tRx:\t{}\t[km]"\
-                "\n\tRy:\t{}\t[km]"\
-                "\n\tRz:\t{}\t[km]"\
-                "\n\tVx:\t{}\t[km/s]"\
-                "\n\tVy:\t{}\t[km/s]"\
-                "\n\tVz:\t{}\t[km/s]".format(self.rx,
-                                          self.ry,
-                                          self.rz,
-                                          self.vx,
-                                          self.vy,
-                                          self.vz)
-
+                "\n\tRX:\t{}\t[km]"\
+                "\n\tRY:\t{}\t[km]"\
+                "\n\tRZ:\t{}\t[km]"\
+                "\n\tVX:\t{}\t[km/s]"\
+                "\n\tVY:\t{}\t[km/s]"\
+                "\n\tVZ:\t{}\t[km/s]".format(self.rx, self.ry, self.rz, self.vx, self.vy, self.vz)
         return name
     
-    def to_array(self)->np.ndarray:
-        return np.array([self.rx, self.ry, self.rz, self.vx, self.vy, self.vz])
+    def __calc_semimajor(self)->float:
+        R = self.position
+        V = self.velocity
 
-    def createOrbit(self)->None:
-        return Orbit.init_from_State(self)
+        print(R)
+        print(V)
+        
+        r = np.linalg.norm(R)
+        v = np.linalg.norm(V)
+        v_r = np.dot(R,V)/r
+
+        h_bar = np.cross(R,V)
+        h = np.linalg.norm(h_bar)
+
+        ecc_bar = 1/self.mu * ((v**2 - self.mu/r)*R - r*v_r*V)
+        ecc = np.linalg.norm(ecc_bar)
+        print(ecc)
+
+        rp = h**2/self.mu * 1/(1 + ecc)
+        ra = h**2/self.mu * 1/(1 - ecc)
+
+        return 0.5*(ra + rp)
+
+@dataclass
+class TLE:
+
+    inc:float
+    raan:float
+    ecc:float
+    arg:float
+    mean_anomaly:float
+    mean_motion:float
+
+    name:str=None
+    id:str=None
+
+    mu:float=c.EARTHMU
+
+    def __post_init__(self)->None:
+        self.a = self.__get_semimajor()
+        return
+    
+    def __repr__(self)->str:
+        name = f"TLE {self.name}:"\
+                f"\n\tinc:\t{self.inc}\t[deg]"\
+                f"\n\tecc:\t{self.ecc}\t[~]"\
+                f"\n\traan:\t{self.raan}\t[deg]"\
+                f"\n\targ:\t{self.arg}\t[deg]"
+        return name
+    
+    def from_dict(info:dict)->None:
+
+        inc = info['INCLINATION']
+        raan = info['RA_OF_ASC_NODE']
+        ecc = info['ECCENTRICITY']
+        arg = info['ARG_OF_PERICENTER']
+        mean_anom = info['MEAN_ANOMALY']
+        mean_motion = info['MEAN_MOTION']
+        name = info['OBJECT_NAME']
+        id = info['OBJECT_ID']
+
+        return TLE(inc, raan, ecc, arg, mean_anom, mean_motion, name, id)
+    
+    def tle_to_state(self)->StateVector:
+        Me = np.deg2rad(self.mean_anomaly)
+
+        if Me < np.pi:
+            E_0 = Me - self.ecc
+        else:
+            E_0 = Me + self.ecc
+        
+        f = lambda E: Me - E + self.ecc * np.sin(E)
+        fp = lambda E: -1 + self.ecc * np.sin(E)
+
+        E_1 = E_0 - (f(E_0)/fp(E_0))
+        err = np.abs(E_1 - E_0)
+
+        while err > 1e-8:
+            E_0 = E_1
+            E_1 = E_0 - (f(E_0)/fp(E_0))
+            err = np.abs(E_1 - E_0)
+        
+        TA = 2*c.atand((np.sqrt((1+self.ecc)/(1-self.ecc)) * np.tan(E_1/2)))
+        theta = np.mod(TA, 360)
+
+        T = 1/self.mean_motion * 24 * 3600
+        a = (T*np.sqrt(self.mu)/(2*np.pi))**(2/3)
+        h = np.sqrt(a*self.mu*(1-self.ecc**2))
+
+        return self.coes_to_state(h=h, ecc=self.ecc, inc=self.inc, raan=self.raan, arg=self.arg, theta=theta,a=a, mu=self.mu)
+
+    def coes_to_state(self, ecc:float, inc:float, raan:float, arg:float, theta:float,*, h:float=None,a:float=None, mu:float=398600)->StateVector:
+
+        if h is None:
+            h = np.sqrt(a * mu * (1 - ecc**2))
+
+        if a is None:
+            rp = h**2/self.mu * 1/(1 + ecc)
+            ra = h**2/self.mu * 1/(1 - ecc)
+            a = 0.5*(ra+rp)   
+
+        peri_r = h**2 / mu * (1/(1 + ecc*c.cosd(theta))) * np.array([[c.cosd(theta)],[c.sind(theta)], [0]])
+        peri_v = mu / h * np.array([[-c.sind(theta)], [ecc + c.cosd(theta)], [0]])
+
+        Q_bar = self.__R3(arg) @ self.__R1(inc) @ self.__R3(raan)
+
+        r = np.transpose(Q_bar) @ peri_r
+        v = np.transpose(Q_bar) @ peri_v
+
+        return StateVector(*r, *v, a=a)
+
+    def __get_semimajor(self)->float:
+        T = 1/self.mean_motion * 24 * 3600
+        a = (T*np.sqrt(self.mu)/(2*np.pi))**(2/3)
+        return a
+
+    def __R1(self, theta:float)->np.ndarray:
+        R = np.array([[1, 0, 0], [0, c.cosd(theta), c.sind(theta)], [0, -c.sind(theta), c.cosd(theta)]])
+        return R
+    
+    def __R3(self, theta:float)->np.ndarray:
+        R = np.array([[c.cosd(theta), c.sind(theta), 0], [-c.sind(theta), c.cosd(theta), 0], [0, 0, 1]])
+        return R
 
 class Orbit:
+    def __init__(self, semiMajorParam:Parameter=None,
+                       eccParam:Parameter=None,
+                       incParam:Parameter=None, 
+                       raanParam:Parameter=None, 
+                       argParam:Parameter=None,
+                       *, 
+                       tleDF:pd.DataFrame=None,
+                       orbitName:str=None, 
+                       sat_TLE_fp:str=c.CUBESATS)->None:
 
-    mu = 398600
-    rad = 6378
+        if tleDF is None:
+            self.TLES = self.__read_TLE_to_df(sat_TLE_fp)
+        else:
+            self.TLES = tleDF
 
-    def __init__(self, *, RV:StateVector=None, Elements:COES=None)->None:
+        print('done')
 
-        haveRV = type(RV) == StateVector
-        haveCOE = type(Elements) == COES
+        self.semi = self.__set_parameter(semiMajorParam, "SEMI")
+        self.ecc = self.__set_parameter(eccParam, "ECC")
+        self.inc = self.__set_parameter(incParam, "INC")
+        self.raan = self.__set_parameter(raanParam, "RAAN")
+        self.arg = self.__set_parameter(argParam, "ARG")
 
-        # logic to ensure only one parameter was given
-        if not haveRV and not haveCOE:
-            raise ValueError('{}Provide State Vector or COES{}'.format(c.RED, c.DEFAULT))
-        
-        if haveRV and haveCOE:
-            print('{}State Vector and COES Given; using State Vector for Orbit Det due to potential disparity{}'.format(c.RED, c.DEFAULT))
-            Elements = None
-        
-        # determine state/elements given the other
-        self.RV0 = RV if RV is not None else self.__coes_to_state(Elements)
-        self.COES = Elements if Elements is not None else self.__state_to_coes(RV)
+        self.name = orbitName
+
+        self.semi.modulate()
+        self.ecc.modulate()
+        self.inc.modulate()
+        self.raan.modulate()
+        self.arg.modulate()
 
         return
 
-    def __repr__(self)->None:
-        name = "Orbit:"\
+    def __repr__(self)->str:
+        name = "Orbit: {}"\
                 "\n\t{}"\
-                "\n\t{}".format(repr(self.COES), repr(self.RV0))
+                "\n\t{}"\
+                "\n\t{}"\
+                "\n\t{}"\
+                "\n\t{}\n".format(self.name,
+                            repr(self.semi),
+                            repr(self.ecc),
+                            repr(self.inc),
+                            repr(self.raan),
+                            repr(self.arg))
+
         return name
 
-    def init_from_State(RV:StateVector)->None:
-        return Orbit(RV=RV)
+    def __read_TLE_to_df(self, fp:str)->pd.DataFrame:
+        with open(fp) as fp_open:
+            sat_tles = jsonload(fp_open)
+        
+        filelen = len(sat_tles)
+
+        ecc = np.empty(filelen, dtype=float)
+        inc = np.empty(filelen, dtype=float)
+        raan = np.empty(filelen, dtype=float)
+        arg = np.empty(filelen, dtype=float)
+        semi = np.empty(filelen, dtype=float)
+        mean_mot = np.empty(filelen, dtype=float)
+
+        with alive_bar(filelen, title='Reading in TLE Data') as bar:
+            for i in range(filelen):
+                tle = TLE.from_dict(sat_tles[i])
+                
+                ecc[i] = tle.ecc
+                inc[i] = tle.inc 
+                raan[i] = tle.raan
+                arg[i] = tle.arg
+                semi[i] = tle.a
+                mean_mot[i] = tle.mean_motion
+
+                bar()
+
+        tledict = {
+                    "ECC":ecc,
+                    "INC":inc,
+                    "RAAN":raan,
+                    "ARG":arg,
+                    "SEMI":semi,
+                    "MEAN_MOTION":mean_mot
+                    }
+                
+        return pd.DataFrame(tledict)
     
-    def init_from_Element(Elements:COES)->None:
-        return Orbit(Elements=Elements)
+    def __set_parameter(self, param:Parameter, name:str)->Parameter:
+        if param is not None:
+            return param 
 
-    def ambient_temp(self)->float:
-        return np.random.normal(loc=312, scale=30)
+        mean = np.mean(self.TLES[name])
+        std = np.std(self.TLES[name])
 
-    def plot_orbit(self, satellite:np.ndarray=None, earth:bool=False, jd:float=None)->None:
-        # check trajectory
-        if self._rx_traj is None:
-            self.__propagate_orbit()
+        return Parameter(0, std, mean, name)
 
-        # plot setup
-        fig = plt.figure()
-
-        ax = plt.axes(projection='3d')
-        ax.axis('equal')
-
-        plt.locator_params(axis='x', nbins=5)
-        plt.locator_params(axis='y', nbins=5)
-        plt.locator_params(axis='z', nbins=5)
-
-        xlbl = 'x [km]'
-        ylbl = 'y [km]'
-        zlbl = 'z [km]'
-        title = 'Orbit Trajectory'
-
-        ax.set_xlabel(xlbl)
-        ax.set_ylabel(ylbl)
-        ax.set_zlabel(zlbl)
-        ax.set_title(title)
-
-        # plot data
-        ax.plot(self._rx_traj, self._ry_traj, self._rz_traj, 'b--', label='Orbit Path')
-
-        if earth:
-            self.__create_earth_model()
-            ax.plot_surface(self.__earth_model_X, self.__earth_model_Y, self.__earth_model_Z, alpha=0.2, label='Earth Model')
-        
-        if satellite is None:
-            theta = np.random.uniform(0, 360)
-            randcoes = self.COES
-            randcoes.theta = theta
-
-            satellite_pos = self._coes_to_state(randcoes)
-        
-        sunpos = self.__solar_position(jd)
-
-        
-        ax.scatter(*satellite_pos, c='r', label='Satellite Position')
-        ax.quiver(*satellite_pos, *sunpos, color='g', length=3000, label='Direction to Sun')
-
-        # add legend, show plot
-        # print(legenditems)
-        ax.legend()
-        ax.axis('equal')
-        plt.show()
-
-        return
-
-    def __state_to_coes(self, RV:StateVector)->COES:
-        #TODO: implement 
-        return 5
-    
-    def __coes_to_state(self, Elements:COES)->StateVector:
-        #TODO: implement
-        return 0
-
-    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=1, *, J2:bool=False, Drag:bool=False, SRP:bool=False, NBody:bool=False)->None:
-        if tspan is None:
-            tspan = (0, self.COES.T)
-
-        steps = int((tspan[1] - tspan[0])/tstep)
-
-        self._rx_traj = np.empty(steps)
-        self._ry_traj = np.empty(steps)
-        self._rz_traj = np.empty(steps)
-
-        self._rx_traj[0] = self.RV0.rx
-        self._ry_traj[0] = self.RV0.ry
-        self._rz_traj[0] = self.RV0.rz
-
-        state = self.RV0.to_array()
-
-        for i in range(1, steps):
-            dstate = self.__two_body(state, J2=J2, Drag=Drag, SRP=SRP, NBody=NBody)
-            state = state + dstate*tstep
-
-            self._rx_traj[i] = state[0]
-            self._ry_traj[i] = state[1]
-            self._rz_traj[i] = state[2]
-
-        return
-    
-    def __solar_position(self, jd:float)->bool:
-        #TODO: implement solar position
-
-        a = np.random.uniform(-1, 1)
-        b = np.random.uniform(-1, 1)
-        c = np.random.uniform(-1, 1)
-
-        return np.array([a,b,c])
-
-    def __two_body(self, state:np.ndarray, mu:float=None, *, J2:bool=False, Drag:bool=False, SRP:bool=False, NBody:bool=False)->np.ndarray:
-        if mu is None:
-            mu = self.mu
-
-        rx = state[0]
-        ry = state[1]
-        rz = state[2]
-        R = np.linalg.norm(np.array([rx, ry, rz]))
-
-        vx = state[3]
-        vy = state[4]
-        vz = state[5]
-
-        # calc perturbations
-        aPert = np.array([0,0,0])
-        
-        if J2:
-            aPert += self.__calcJ2()
-        
-        if Drag:
-            aPert += self.__calcDrag()
-        
-        if SRP:
-            aPert += self.__calcSRP()
-
-        if NBody:
-            aPert += self.__calcNBody()
-
-        ax = -mu * rx / (R**3) + aPert[0]
-        ay = -mu * ry / (R**3) + aPert[1]
-        az = -mu * rz / (R**3) + aPert[2]
-
-        return np.array([vx, vy, vz, ax, ay, az])
-    
-    def __calcJ2(self)->np.ndarray:
-        return np.array([0,0,0])
-
-    def __calcDrag(self)->np.ndarray:
-        return np.array([0,0,0])
-    
-    def __calcSRP(self)->np.ndarray:
-        return np.array([0,0,0])
-
-    def __calcNBody(self)->np.ndarray:
-        return np.array([0,0,0])
-
-    def __create_earth_model(self, R:float=None)->None:
-        if R is None:
-            R = self.rad
-
-        u = np.linspace(0, 2*np.pi, 100)
-        v = np.linspace(0, np.pi, 100)
-
-        U, V = np.mgrid[0:2 * np.pi:30j, 0:np.pi:20j]
-
-        X = R * np.cos(U) * np.sin(V)
-        Y = R * np.sin(U) * np.sin(V)
-        Z = R * np.cos(V)
-
-        self.__earth_model_X = X
-        self.__earth_model_Y = Y
-        self.__earth_model_Z = Z
-
+    def __solar_position(self, position:StateVector)->np.ndarray:
+        # TODO: implement (again)
         return
 

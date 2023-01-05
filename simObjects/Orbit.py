@@ -13,6 +13,7 @@ from json import load as jsonload
 
 from alive_progress import alive_bar
 from Parameter import Parameter
+from MaterialProperty import Material
 
 @dataclass
 class StateVector:
@@ -134,7 +135,7 @@ class TLE:
 
         return self.coes_to_state(h=h, ecc=self.ecc, inc=self.inc, raan=self.raan, arg=self.arg, theta=theta,a=a, mu=self.mu)
 
-    def coes_to_state(self, ecc:float, inc:float, raan:float, arg:float, theta:float,*, h:float=None,a:float=None, mu:float=398600)->StateVector:
+    def coes_to_state(self, ecc:float, inc:float, raan:float, arg:float, theta:float, *, h:float=None, a:float=None, mu:float=398600)->StateVector:
 
         if h is None:
             h = np.sqrt(a * mu * (1 - ecc**2))
@@ -175,15 +176,13 @@ class Orbit:
                        argParam:Parameter=None,
                        *, 
                        tleDF:pd.DataFrame=None,
-                       orbitName:str=None, 
+                       orbitName:str="N/A", 
                        sat_TLE_fp:str=c.CUBESATS)->None:
 
         if tleDF is None:
             self.TLES = self.__read_TLE_to_df(sat_TLE_fp)
         else:
             self.TLES = tleDF
-
-        print('done')
 
         self.semi = self.__set_parameter(semiMajorParam, "SEMI")
         self.ecc = self.__set_parameter(eccParam, "ECC")
@@ -198,6 +197,8 @@ class Orbit:
         self.inc.modulate()
         self.raan.modulate()
         self.arg.modulate()
+
+        self.all_params = [self.semi, self.ecc, self.inc, self.raan, self.arg]
 
         return
 
@@ -215,6 +216,30 @@ class Orbit:
                             repr(self.arg))
 
         return name
+
+    def get_random_position(self)->TLE:
+
+        framelen = len(self.TLES.index)
+
+        inc = self.TLES['INC'][np.random.randint(0, framelen-1)]
+        ecc = self.TLES['ECC'][np.random.randint(0, framelen-1)]
+        mean_mot = self.TLES['MEAN_MOTION'][np.random.randint(0, framelen-1)]
+
+        raan = np.random.uniform(0, 360)
+        arg = np.random.uniform(0, 360)
+        mean_anom = np.random.uniform(0, 360)
+        
+        return TLE(inc, raan, ecc, arg, mean_anom, mean_mot).tle_to_state()
+
+    def get_temperature(self, position:StateVector, julianDate:float, material: Material)->float:
+        # TODO: implement from Garzon et al.
+
+        Qdir = self.__get_Q_direct(position, julianDate)
+        Qalb = self.__get_Q_albedo()
+        Qir = self.__get_Q_ir()
+        Qtot = Qdir + Qalb + Qir
+
+        return
 
     def __read_TLE_to_df(self, fp:str)->pd.DataFrame:
         with open(fp) as fp_open:
@@ -262,7 +287,86 @@ class Orbit:
 
         return Parameter(0, std, mean, name)
 
-    def __solar_position(self, position:StateVector)->np.ndarray:
-        # TODO: implement (again)
+    def __solar_position(self, julianDate:float)->np.ndarray:
+        """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
+
+        Calculate position of the Sun relative to Earth based on julian date
+
+        Args:
+            julianDate (float): julian date for day in question
+
+        Returns:
+            np.ndarray: non-normalized position of Sun wrt Earth
+        """
+
+        jd = julianDate
+        
+        #...Julian days since J2000:
+        n     = jd - 2451545
+
+        #...Mean anomaly (deg{:
+        M     = 357.528 + 0.9856003*n
+        M     = np.mod(M,360)
+
+        #...Mean longitude (deg):
+        L     = 280.460 + 0.98564736*n
+        L     = np.mod(L,360)
+
+        #...Apparent ecliptic longitude (deg):
+        lamda = L + 1.915*c.sind(M) + 0.020*c.sind(2*M)
+        lamda = np.mod(lamda,360)
+
+        #...Obliquity of the ecliptic (deg):
+        eps   = 23.439 - 0.0000004*n
+
+        #...Unit vector from earth to sun:
+        u     = np.array([c.cosd(lamda), c.sind(lamda)*c.cosd(eps), c.sind(lamda)*c.sind(eps)])
+
+        #...Distance from earth to sun (km):
+        rS    = (1.00014 - 0.01671*c.cosd(M) - 0.000140*c.cosd(2*M))*c.AU
+
+        #...Geocentric position vector (km):
+        r_S   = rS*u
+
+        return r_S
+
+    def __solar_line_of_sight(self, position:StateVector, julianDate:float)->bool:
+
+        r_earth_sun = self.__solar_position(julianDate)
+        r_earth_sc = position.position
+
+        theta = np.arccos(np.dot(r_earth_sun, r_earth_sc)/(np.linalg.norm(r_earth_sun)*np.linalg.norm(r_earth_sc)))
+        thetaA = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sc)))
+        thetaB = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sun)))
+
+        return theta > (thetaA + thetaB)
+
+    def __get_Q_direct(self, position:StateVector, julianDate:float)->float:
+        """Calculate Heat Flux from Sun (Direct)
+
+        Args:
+            position (StateVector): Position of satellite
+            julianDate (float): julianDate
+
+        Returns:
+            float: Heat Flux from Sun (direct)
+        """
+        
+        # If not in direct LOS of Sun, Q_direct = 0
+        if not self.__solar_line_of_sight(position, julianDate):
+            return 0
+        
+        # TODO: implement from Garzon et al.
+
+        return
+    
+    def __get_Q_albedo(self)->float:
+        # TODO: implement from Garzon et al.
+        return
+    
+    def __get_Q_ir(self)->float:
+        # TODO: implement from Garzon et al.
         return
 
+if __name__ == '__main__':
+    o:Orbit = Orbit(orbitName='CubeSats')

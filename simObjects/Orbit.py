@@ -14,6 +14,7 @@ from json import load as jsonload
 from alive_progress import alive_bar
 from Parameter import Parameter
 from MaterialProperty import Material
+import matplotlib.pyplot as plt
 
 @dataclass
 class StateVector:
@@ -41,7 +42,9 @@ class StateVector:
                 "\n\tRZ:\t{}\t[km]"\
                 "\n\tVX:\t{}\t[km/s]"\
                 "\n\tVY:\t{}\t[km/s]"\
-                "\n\tVZ:\t{}\t[km/s]".format(self.rx, self.ry, self.rz, self.vx, self.vy, self.vz)
+                "\n\tVZ:\t{}\t[km/s]"\
+                "\n\t a:\t{}\t[km]"\
+                "\n\t{} km @ {} km/s".format(self.rx, self.ry, self.rz, self.vx, self.vy, self.vz, self.a, np.linalg.norm(self.position), np.linalg.norm(self.velocity))
         return name
     
     def __calc_semimajor(self)->float:
@@ -169,6 +172,9 @@ class TLE:
         return R
 
 class Orbit:
+    
+    mu = c.EARTHMU
+
     def __init__(self, semiMajorParam:Parameter=None,
                        eccParam:Parameter=None,
                        incParam:Parameter=None, 
@@ -192,12 +198,6 @@ class Orbit:
 
         self.name = orbitName
 
-        self.semi.modulate()
-        self.ecc.modulate()
-        self.inc.modulate()
-        self.raan.modulate()
-        self.arg.modulate()
-
         self.all_params = [self.semi, self.ecc, self.inc, self.raan, self.arg]
 
         return
@@ -217,19 +217,19 @@ class Orbit:
 
         return name
 
-    def get_random_position(self)->TLE:
+    def get_random_position(self)->StateVector:
 
-        framelen = len(self.TLES.index)
-
-        inc = self.TLES['INC'][np.random.randint(0, framelen-1)]
-        ecc = self.TLES['ECC'][np.random.randint(0, framelen-1)]
-        mean_mot = self.TLES['MEAN_MOTION'][np.random.randint(0, framelen-1)]
-
-        raan = np.random.uniform(0, 360)
-        arg = np.random.uniform(0, 360)
-        mean_anom = np.random.uniform(0, 360)
+        inc = self.__get_random_value(self.inc)
+        raan = self.__get_random_value(self.raan)
+        ecc = self.__get_random_value(self.ecc)
+        arg = self.__get_random_value(self.arg)
+        theta = np.random.uniform(0, 360)
         
-        return TLE(inc, raan, ecc, arg, mean_anom, mean_mot).tle_to_state()
+        semi = self.__get_random_value(self.semi)
+        T = semi**(3/2) * 2*np.pi / (np.sqrt(self.mu))
+        mean_mot = 24 * 3600 / T
+
+        return TLE(inc, raan, ecc, arg, theta, mean_mot).tle_to_state()
 
     def get_temperature(self, position:StateVector, julianDate:float, material: Material)->float:
         # TODO: implement from Garzon et al.
@@ -240,6 +240,21 @@ class Orbit:
         Qtot = Qdir + Qalb + Qir
 
         return
+
+    def __get_random_value(self, param:Parameter)->float:
+        
+        val = param.modulate()
+
+        if "TRANSFORMED_" not in param.name:
+            return val
+        
+        paramname = param.name[12:]
+        skew = self.TLES[paramname].skew()
+
+        if skew > 0:
+            return np.e**val    # undo left skew tfr
+
+        return np.real(val**(1/5))   # undo right skew tfr
 
     def __read_TLE_to_df(self, fp:str)->pd.DataFrame:
         with open(fp) as fp_open:
@@ -282,10 +297,22 @@ class Orbit:
         if param is not None:
             return param 
 
+        skew = self.TLES[name].skew()
+        if np.abs(skew) > 1:
+            norm_data = self.__normalize_data(name)
+            name = 'TRANSFORMED_'+name
+            self.TLES[name] = norm_data
+
         mean = np.mean(self.TLES[name])
         std = np.std(self.TLES[name])
 
         return Parameter(0, std, mean, name)
+
+    def __normalize_data(self, name:str)->pd.DataFrame:
+        skew = self.TLES[name].skew()
+        if skew > 0:
+            return self.TLES[name].apply(lambda x: np.log(x))   # handle left skew
+        return self.TLES[name].apply(lambda x: x**5)    # handle right skew
 
     def __solar_position(self, julianDate:float)->np.ndarray:
         """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
@@ -368,5 +395,13 @@ class Orbit:
         # TODO: implement from Garzon et al.
         return
 
+def n(x, mean=1, std=0.1):
+    frac = 1/(std*np.sqrt(2*np.pi))
+    ex = -0.5*((x-mean)/std)**2
+
+    return frac * np.exp(ex)
+
 if __name__ == '__main__':
     o:Orbit = Orbit(orbitName='CubeSats')
+    rv = o.get_random_position()
+    

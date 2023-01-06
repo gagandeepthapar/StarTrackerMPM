@@ -28,7 +28,7 @@ class Parameter:
         if units is None:
             units = ""
         self.units = units
-
+        self.value = self.modulate()
         self.reset()
 
         return
@@ -58,3 +58,25 @@ class Parameter:
         units = camDict[name+"_UNITS"]
 
         return Parameter(ideal=ideal, stddev=stddev, mean=mean, name=name, units=units)
+
+class UniformParameter:
+
+    def __init__(self, low:float, high:float, name:str=None, units:str=None, color:str=c.DEFAULT)->None:
+        self.low = low
+        self.high = high
+        
+        self.name = name
+        self.units = units
+        self.color = color
+
+        self.value = self.modulate()
+
+        return
+    
+    def __repr__(self)->str:
+        name = f'{self.color}{self.name}:{self.low} - {self.high}{self.units}{c.DEFAULT}'
+        return name
+    
+    def modulate(self)->float:
+        self.value = np.random.uniform(self.low, self.high) 
+        return self.value

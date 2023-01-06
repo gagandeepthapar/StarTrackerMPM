@@ -12,9 +12,10 @@ from dataclasses import dataclass
 from json import load as jsonload
 
 from alive_progress import alive_bar
-from Parameter import Parameter
+from Parameter import Parameter, UniformParameter
 from MaterialProperty import Material
 import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
 
 @dataclass
 class StateVector:
@@ -24,36 +25,24 @@ class StateVector:
     vx:float
     vy:float
     vz:float
-    a:float=None
-    mu:float=398600
+    a:float = None
+    mu:int=c.EARTHMU
 
     def __post_init__(self)->None:
         self.position = np.array([self.rx, self.ry, self.rz]).reshape((1,3))[0]
         self.velocity = np.array([self.vx, self.vy, self.vz]).reshape((1,3))[0]
         self.state = np.array([*self.position, *self.velocity])
-        if self.a is None:
-            self.a = self.__calc_semimajor()
+        self.a = self.__calc_semimajor()
+        self.T = self.__calc_period()
         return
 
     def __repr__(self)->str:
-        name = "State Vector:"\
-                "\n\tRX:\t{}\t[km]"\
-                "\n\tRY:\t{}\t[km]"\
-                "\n\tRZ:\t{}\t[km]"\
-                "\n\tVX:\t{}\t[km/s]"\
-                "\n\tVY:\t{}\t[km/s]"\
-                "\n\tVZ:\t{}\t[km/s]"\
-                "\n\t a:\t{}\t[km]"\
-                "\n\t{} km @ {} km/s".format(self.rx, self.ry, self.rz, self.vx, self.vy, self.vz, self.a, np.linalg.norm(self.position), np.linalg.norm(self.velocity))
-        return name
+        return f'State Vector: {np.round(self.a,3)}km @ {np.round(self.T/60,3)}min'
     
     def __calc_semimajor(self)->float:
         R = self.position
         V = self.velocity
 
-        print(R)
-        print(V)
-        
         r = np.linalg.norm(R)
         v = np.linalg.norm(V)
         v_r = np.dot(R,V)/r
@@ -63,12 +52,14 @@ class StateVector:
 
         ecc_bar = 1/self.mu * ((v**2 - self.mu/r)*R - r*v_r*V)
         ecc = np.linalg.norm(ecc_bar)
-        print(ecc)
 
         rp = h**2/self.mu * 1/(1 + ecc)
         ra = h**2/self.mu * 1/(1 - ecc)
 
         return 0.5*(ra + rp)
+
+    def __calc_period(self)->float:
+        return self.a**(3/2) * (2*np.pi) / np.sqrt(self.mu)
 
 @dataclass
 class TLE:
@@ -90,12 +81,7 @@ class TLE:
         return
     
     def __repr__(self)->str:
-        name = f"TLE {self.name}:"\
-                f"\n\tinc:\t{self.inc}\t[deg]"\
-                f"\n\tecc:\t{self.ecc}\t[~]"\
-                f"\n\traan:\t{self.raan}\t[deg]"\
-                f"\n\targ:\t{self.arg}\t[deg]"
-        return name
+        return f"TLE: {self.name}" 
     
     def from_dict(info:dict)->None:
 
@@ -171,75 +157,95 @@ class TLE:
         R = np.array([[c.cosd(theta), c.sind(theta), 0], [-c.sind(theta), c.cosd(theta), 0], [0, 0, 1]])
         return R
 
-class Orbit:
-    
+class OrbitData:
+
     mu = c.EARTHMU
+    
+    def __init__(self,*, tlePD:pd.DataFrame=None, tleJSONFP:str=c.CUBESATS)->None:
 
-    def __init__(self, semiMajorParam:Parameter=None,
-                       eccParam:Parameter=None,
-                       incParam:Parameter=None, 
-                       raanParam:Parameter=None, 
-                       argParam:Parameter=None,
-                       *, 
-                       tleDF:pd.DataFrame=None,
-                       orbitName:str="N/A", 
-                       sat_TLE_fp:str=c.CUBESATS)->None:
+        if tlePD is None:
+            tlePD = self.__read_TLE_to_df(tleJSONFP)
+        
+        self.TLES = tlePD
 
-        if tleDF is None:
-            self.TLES = self.__read_TLE_to_df(sat_TLE_fp)
-        else:
-            self.TLES = tleDF
-
-        self.semi = self.__set_parameter(semiMajorParam, "SEMI")
-        self.ecc = self.__set_parameter(eccParam, "ECC")
-        self.inc = self.__set_parameter(incParam, "INC")
-        self.raan = self.__set_parameter(raanParam, "RAAN")
-        self.arg = self.__set_parameter(argParam, "ARG")
-
-        self.name = orbitName
-
-        self.all_params = [self.semi, self.ecc, self.inc, self.raan, self.arg]
+        self.params = self.__create_params()
 
         return
-
+    
     def __repr__(self)->str:
-        name = "Orbit: {}"\
-                "\n\t{}"\
-                "\n\t{}"\
-                "\n\t{}"\
-                "\n\t{}"\
-                "\n\t{}\n".format(self.name,
-                            repr(self.semi),
-                            repr(self.ecc),
-                            repr(self.inc),
-                            repr(self.raan),
-                            repr(self.arg))
-
+        name = 'ORBIT DATA:\n{}'.format(self.TLES)
         return name
 
-    def get_random_position(self)->StateVector:
+    def add_TLE(self, tle:TLE)->None:
+        tledict = {
+                    "ECC":[tle.ecc],
+                    "INC":[tle.inc],
+                    "RAAN":[tle.raan],
+                    "ARG":[tle.arg],
+                    "SEMI":[tle.a],
+                    "MEAN_MOTION":[tle.mean_motion],
+                    }
 
-        inc = self.__get_random_value(self.inc)
-        raan = self.__get_random_value(self.raan)
-        ecc = self.__get_random_value(self.ecc)
-        arg = self.__get_random_value(self.arg)
-        theta = np.random.uniform(0, 360)
-        
-        semi = self.__get_random_value(self.semi)
-        T = semi**(3/2) * 2*np.pi / (np.sqrt(self.mu))
-        mean_mot = 24 * 3600 / T
-
-        return TLE(inc, raan, ecc, arg, theta, mean_mot).tle_to_state()
-
-    def get_temperature(self, position:StateVector, julianDate:float, material: Material)->float:
-        # TODO: implement from Garzon et al.
-
-        Qdir = self.__get_Q_direct(position, julianDate)
-        Qalb = self.__get_Q_albedo()
-        Qir = self.__get_Q_ir()
-        Qtot = Qdir + Qalb + Qir
-
+        self.TLES = self.TLES.append(pd.DataFrame(tledict), ignore_index=True)
+        self.params = self.__create_params()
         return
+
+    def __read_TLE_to_df(self, fp:str)->pd.DataFrame:
+        with open(fp) as fp_open:
+            sat_tles = jsonload(fp_open)
+        
+        filelen = len(sat_tles)
+
+        ecc = np.empty(filelen, dtype=float)
+        inc = np.empty(filelen, dtype=float)
+        raan = np.empty(filelen, dtype=float)
+        arg = np.empty(filelen, dtype=float)
+        semi = np.empty(filelen, dtype=float)
+        mean_mot = np.empty(filelen, dtype=float)
+        tleList = np.empty(filelen, dtype=TLE)
+
+        with alive_bar(filelen, title='Reading in TLE Data') as bar:
+            for i in range(filelen):
+                tle = TLE.from_dict(sat_tles[i])
+                
+                ecc[i] = tle.ecc
+                inc[i] = tle.inc 
+                raan[i] = tle.raan
+                arg[i] = tle.arg
+                semi[i] = tle.a
+                mean_mot[i] = tle.mean_motion
+                tleList[i] = tle
+
+                bar()
+
+        tledict = {
+                    "ECC":ecc,
+                    "INC":inc,
+                    "RAAN":raan,
+                    "ARG":arg,
+                    "SEMI":semi,
+                    "MEAN_MOTION":mean_mot,
+                    }
+        
+        df = pd.DataFrame(tledict)
+
+        return df
+    
+    def __create_params(self)->dict:
+
+        param_dict = {}
+        for param in self.TLES.columns:
+            mean = np.mean(self.TLES[param])
+            std = np.mean(self.TLES[param])
+            param_dict[param] = Parameter(mean, std, mean, param)
+
+        # skew = self.TLES[name].skew()
+        # if np.abs(skew) > 1:
+        #     norm_data = self.__normalize_data(name)
+        #     name = 'TRANSFORMED_'+name
+        #     self.TLES[name] = norm_data
+
+        return param_dict
 
     def __get_random_value(self, param:Parameter)->float:
         
@@ -256,65 +262,155 @@ class Orbit:
 
         return np.real(val**(1/5))   # undo right skew tfr
 
-    def __read_TLE_to_df(self, fp:str)->pd.DataFrame:
-        with open(fp) as fp_open:
-            sat_tles = jsonload(fp_open)
-        
-        filelen = len(sat_tles)
-
-        ecc = np.empty(filelen, dtype=float)
-        inc = np.empty(filelen, dtype=float)
-        raan = np.empty(filelen, dtype=float)
-        arg = np.empty(filelen, dtype=float)
-        semi = np.empty(filelen, dtype=float)
-        mean_mot = np.empty(filelen, dtype=float)
-
-        with alive_bar(filelen, title='Reading in TLE Data') as bar:
-            for i in range(filelen):
-                tle = TLE.from_dict(sat_tles[i])
-                
-                ecc[i] = tle.ecc
-                inc[i] = tle.inc 
-                raan[i] = tle.raan
-                arg[i] = tle.arg
-                semi[i] = tle.a
-                mean_mot[i] = tle.mean_motion
-
-                bar()
-
-        tledict = {
-                    "ECC":ecc,
-                    "INC":inc,
-                    "RAAN":raan,
-                    "ARG":arg,
-                    "SEMI":semi,
-                    "MEAN_MOTION":mean_mot
-                    }
-                
-        return pd.DataFrame(tledict)
-    
-    def __set_parameter(self, param:Parameter, name:str)->Parameter:
-        if param is not None:
-            return param 
-
-        skew = self.TLES[name].skew()
-        if np.abs(skew) > 1:
-            norm_data = self.__normalize_data(name)
-            name = 'TRANSFORMED_'+name
-            self.TLES[name] = norm_data
-
-        mean = np.mean(self.TLES[name])
-        std = np.std(self.TLES[name])
-
-        return Parameter(0, std, mean, name)
-
     def __normalize_data(self, name:str)->pd.DataFrame:
         skew = self.TLES[name].skew()
         if skew > 0:
             return self.TLES[name].apply(lambda x: np.log(x))   # handle left skew
         return self.TLES[name].apply(lambda x: x**5)    # handle right skew
 
-    def __solar_position(self, julianDate:float)->np.ndarray:
+class Orbit:
+
+    mu:int = c.EARTHMU
+
+    def __init__(self, incParam:Parameter=None,
+                       eccParam:Parameter=None,
+                       semiParam:Parameter=None,
+                       *,
+                       orbitData:OrbitData=None)->None:
+
+        self.__orbitData = orbitData
+
+        self.inc:Parameter = self.__set_parameter(incParam, "INC")
+        self.ecc:Parameter = self.__set_parameter(eccParam, "ECC")
+        self.semi:Parameter = self.__set_parameter(semiParam, "SEMI")
+
+        self.arg = UniformParameter(0, 360, 'ARG', c.DEG)
+        self.raan = UniformParameter(0, 360, 'RAAN', c.DEG)
+        self.theta = UniformParameter(0, 360, 'TA', c.DEG)
+        self.jd = UniformParameter(0, 365.25, 'JULIAN_DATE', 'days')
+
+        self.randomize()
+        return
+    
+    def randomize(self)->None:
+
+        self.inc.modulate()
+        self.ecc.modulate()
+        self.semi.modulate()
+        
+        self.arg.modulate()
+        self.raan.modulate()
+        self.theta.modulate()
+        self.jd.modulate()
+
+        self.T = self.__calc_period()
+
+        self.state = self.__calc_state()
+        self.path = self.__propagate_orbit()
+
+        return
+
+    def calc_temperature(self)->float:
+
+        return
+
+    def __calc_state(self)->StateVector:
+        
+        inc = self.inc.value
+        ecc = self.ecc.value
+        theta = self.theta.value
+        arg = self.arg.value
+        raan = self.raan.value
+        a = self.semi.value
+        
+        __R1 = lambda theta: np.array([[1, 0, 0], [0, c.cosd(theta), c.sind(theta)], [0, -c.sind(theta), c.cosd(theta)]])
+        __R3 = lambda theta: np.array([[c.cosd(theta), c.sind(theta), 0], [-c.sind(theta), c.cosd(theta), 0], [0, 0, 1]]) 
+
+        h = np.sqrt(a * self.mu * (1 - ecc**2))
+
+        peri_r = h**2 / self.mu * (1/(1 + ecc*c.cosd(theta))) * np.array([[c.cosd(theta)],[c.sind(theta)], [0]])
+        peri_v = self.mu / h * np.array([[-c.sind(theta)], [ecc + c.cosd(theta)], [0]])
+
+        Q_bar = __R3(arg) @ __R1(inc) @ __R3(raan)
+
+        r = np.transpose(Q_bar) @ peri_r
+        v = np.transpose(Q_bar) @ peri_v
+
+        return StateVector(*r, *v, a=a)
+
+    def __set_parameter(self, param:Parameter, name:str)->Parameter:
+        if param is not None:
+            return param
+        
+        if self.__orbitData is None:
+            print('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
+            self.__orbitData = OrbitData()
+        
+        print('{}Generating Parameter: {}{}'.format(c.YELLOW,c.DEFAULT,name))
+        return self.__orbitData.params[name]
+        
+    def __calc_period(self)->float:
+        a = self.semi.value
+        T = a**(3/2) * (2*np.pi) / np.sqrt(self.mu)
+        return T
+
+    def __propagate_orbit(self, tspan:tuple[float]=None, tstep=1)->pd.DataFrame:
+        if tspan is None:
+            tspan = (0, int(self.T)+1)
+        
+        t_eval = np.linspace(tspan[0], tspan[1], int((tspan[1] - tspan[0])/tstep)+1)
+        
+        sol = solve_ivp(self.__two_body, tspan, self.state.state, t_eval=t_eval)
+        
+        traj = pd.DataFrame({
+                                "TIME": sol['t'],
+                                "RX": sol['y'][0],
+                                "RY": sol['y'][1],
+                                "RZ": sol['y'][2],
+                                "VX": sol['y'][3],
+                                "VY": sol['y'][4],
+                                "VZ": sol['y'][5],
+                            })
+
+        return traj
+
+    def __two_body(self, t:float, state:np.ndarray, mu=None)->np.ndarray:
+        if mu is None:
+            mu = self.mu
+
+        r = state[:3]
+        R = np.linalg.norm(r)
+        v:np.ndarray = state[3:]
+
+        a = -mu * r / (R**3)
+        return np.append(v, a)
+
+    def __get_Q_direct(self, position:StateVector, julianDate:float)->float:
+        """Calculate Heat Flux from Sun (Direct)
+
+        Args:
+            position (StateVector): Position of satellite
+            julianDate (float): julianDate
+
+        Returns:
+            float: Heat Flux from Sun (direct)
+        """
+        
+        # If not in direct LOS of Sun, Q_direct = 0
+
+        # TODO: implement from Garzon et al.
+
+        return
+    
+    def __get_Q_albedo(self)->float:
+        # TODO: implement from Garzon et al.
+        return
+    
+    def __get_Q_ir(self)->float:
+        # TODO: implement from Garzon et al.
+        return
+
+    def __solar_position(self)->np.ndarray:
         """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
 
         Calculate position of the Sun relative to Earth based on julian date
@@ -326,7 +422,7 @@ class Orbit:
             np.ndarray: non-normalized position of Sun wrt Earth
         """
 
-        jd = julianDate
+        jd = self.jd.value
         
         #...Julian days since J2000:
         n     = jd - 2451545
@@ -357,10 +453,10 @@ class Orbit:
 
         return r_S
 
-    def __solar_line_of_sight(self, position:StateVector, julianDate:float)->bool:
+    def __solar_line_of_sight(self)->bool:
 
-        r_earth_sun = self.__solar_position(julianDate)
-        r_earth_sc = position.position
+        r_earth_sun = self.__solar_position()
+        r_earth_sc = self.state.position
 
         theta = np.arccos(np.dot(r_earth_sun, r_earth_sc)/(np.linalg.norm(r_earth_sun)*np.linalg.norm(r_earth_sc)))
         thetaA = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sc)))
@@ -368,40 +464,5 @@ class Orbit:
 
         return theta > (thetaA + thetaB)
 
-    def __get_Q_direct(self, position:StateVector, julianDate:float)->float:
-        """Calculate Heat Flux from Sun (Direct)
-
-        Args:
-            position (StateVector): Position of satellite
-            julianDate (float): julianDate
-
-        Returns:
-            float: Heat Flux from Sun (direct)
-        """
-        
-        # If not in direct LOS of Sun, Q_direct = 0
-        if not self.__solar_line_of_sight(position, julianDate):
-            return 0
-        
-        # TODO: implement from Garzon et al.
-
-        return
-    
-    def __get_Q_albedo(self)->float:
-        # TODO: implement from Garzon et al.
-        return
-    
-    def __get_Q_ir(self)->float:
-        # TODO: implement from Garzon et al.
-        return
-
-def n(x, mean=1, std=0.1):
-    frac = 1/(std*np.sqrt(2*np.pi))
-    ex = -0.5*((x-mean)/std)**2
-
-    return frac * np.exp(ex)
-
 if __name__ == '__main__':
-    o:Orbit = Orbit(orbitName='CubeSats')
-    rv = o.get_random_position()
-    
+    o = Orbit()

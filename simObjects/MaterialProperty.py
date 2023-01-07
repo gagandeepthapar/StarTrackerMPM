@@ -36,3 +36,13 @@ class Material:
             return param
 
         return Parameter(0.5, 0.05, 0, name)    # random parameter; will be updated to be based on known materials eg Aluminum
+
+class SatNode:
+
+    def __init__(self, sideA:Material, sideB:Material, sideC: Material)->None:
+
+        return
+
+    def get_attitude(self)->tuple[np.ndarray]:
+
+        return    

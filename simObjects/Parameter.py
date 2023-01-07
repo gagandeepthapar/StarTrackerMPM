@@ -11,7 +11,7 @@ import json
 
 class Parameter:
 
-    def __init__(self, ideal:float, stddev:float, mean:float=0, name:str=None, units:str=None, color:str=c.DEFAULT)->None:
+    def __init__(self, ideal:float, stddev:float, mean:float=0, *, name:str=None, units:str=None, color:str=c.DEFAULT, retVal:callable=lambda x:x)->None:
 
         self.ideal = ideal
         self.name = name
@@ -28,17 +28,20 @@ class Parameter:
         if units is None:
             units = ""
         self.units = units
+
+        self.retVal = retVal
         self.value = self.modulate()
         self.reset()
+
 
         return
     
     def __repr__(self)->str:
-        pname = f'{self._color}{self.name}: {np.round(self.value,3)}{self.units} [{self.ideal+self._err_mean}({c.MU}) +/- {3*self._err_stddev}(3{c.SIGMA})]{c.DEFAULT}'
+        pname = f'{self._color}{self.name}: {np.round(self.value,3)}{self.units} [{self.retVal(self.ideal+self._err_mean)}({c.MU}) +/- {self.retVal(self._err_stddev)}(3{c.SIGMA})]{c.DEFAULT}'
         return pname 
 
     def modulate(self)->float:
-        self.value = self.ideal + (np.random.normal(loc=self._err_mean, scale=self._err_stddev))
+        self.value = self.retVal(self.ideal + (np.random.normal(loc=self._err_mean, scale=self._err_stddev)))
         return self.value
     
     def reset(self)->float:
@@ -74,7 +77,7 @@ class UniformParameter:
         return
     
     def __repr__(self)->str:
-        name = f'{self.color}{self.name}:{self.low} - {self.high}{self.units}{c.DEFAULT}'
+        name = f'{self.color}{self.name}: {self.low} - {self.high} {self.units}{c.DEFAULT}'
         return name
     
     def modulate(self)->float:

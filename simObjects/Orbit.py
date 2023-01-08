@@ -204,7 +204,6 @@ class OrbitData:
 
         return Parameter(mean, std, 0, name=name, retVal=retVal)
 
-
 class Orbit:
 
     mu:int = c.EARTHMU
@@ -307,7 +306,7 @@ class Orbit:
         T = a**(3/2) * (2*np.pi) / np.sqrt(self.mu)
         return T
 
-    def __propagate_orbit(self, tspan:tuple[float]=None, tstep=1)->pd.DataFrame:
+    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=1)->pd.DataFrame:
         if tspan is None:
             tspan = (0, int(self.T)+1)
         

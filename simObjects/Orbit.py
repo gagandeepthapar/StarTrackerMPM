@@ -14,6 +14,7 @@ from Parameter import Parameter, UniformParameter
 from scipy.integrate import solve_ivp
 
 import constants as c
+from MaterialProperty import Material, SatNode
 
 
 @dataclass
@@ -444,10 +445,20 @@ class Orbit:
         fig = plt.figure()
         ax = plt.axes(projection='3d')
         
+        al = Material()
+        sat = SatNode(al, al, al, self.state.state)
+        att = sat.get_attitude()
 
         # sat pos and path
-        ax.plot(self.path['RX'],self.path['RY'], self.path['RZ'], 'b--', label='orbit')
+        ax.plot(self.path['RX'],self.path['RY'], self.path['RZ'], 'y--', label='orbit')
         ax.scatter(*self.state.position, c='r', label='satellite')
+        ax.quiver(*self.state.position, *(att[0]), length=1500, color='red', label=r'$Sat_{+X}$')
+        ax.quiver(*self.state.position, *(att[1]), length=1500, color='darkviolet',  label=r'$Sat_{+Y}$')
+        ax.quiver(*self.state.position, *(att[2]), length=1500, color='blue',  label=r'$Sat_{+Z}$')
+
+        ax.quiver(*self.state.position, *(-1*att[0]), length=1500, color='red', linestyle='--', label=r'$Sat_{-X}$')
+        ax.quiver(*self.state.position, *(-1*att[1]), length=1500, color='darkviolet', linestyle='--',  label=r'$Sat_{-Y}$')
+        ax.quiver(*self.state.position, *(-1*att[2]), length=1500, color='blue', linestyle='--',  label=r'$Sat_{-Z}$')
 
         # earth
         x, y, z = self.__earth_model()
@@ -458,13 +469,21 @@ class Orbit:
         rS = rS/np.linalg.norm(rS)
 
         col = 'red'
+        los = 'Not Found'
         if self.__solar_line_of_sight():
             col = 'green'
+            los = 'Acquired'
 
         ax.quiver(0,0,0, *rS, length=6000, color=col, label='Dir to Sun')
 
+        title = 'Simulated Orbit on JD {}\nSolar Line-of-Sight {}'.format(self.jd.value, los)
+
         ax.legend()
         ax.axis('equal')
+        ax.set_title(title)
+        ax.set_xlabel('X [km]')
+        ax.set_ylabel('Y [km]')
+        ax.set_zlabel('Z [km]')
 
         return
     
@@ -479,8 +498,4 @@ class Orbit:
 
 if __name__ == '__main__':
     o = Orbit()
-    o.calc_temperature(o.state, o.jd, (0, o.path['TIME'].iloc[-1]))
-
-    o.plot_system()
-    plt.show()
 

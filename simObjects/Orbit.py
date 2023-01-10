@@ -258,6 +258,11 @@ class Orbit:
         self.theta = UniformParameter(0, 360, 'THETA', c.DEG)
         self.jd = UniformParameter(c.J2000, c.J2000+365.25, 'JULIAN_DATE', 'days')
 
+        self.T:float=None
+        self.state:StateVector=None
+        self.path:pd.DataFrame=None
+        self.heatFlux = pd.DataFrame()
+
         self.name = name
         self.randomize()
         return
@@ -281,19 +286,40 @@ class Orbit:
 
         self.state = self.__calc_state()
         self.path = self.__propagate_orbit()
+        self.heatFlux['TIME'] = self.path['TIME']
 
         return
 
-    def calc_temperature(self, position:StateVector, julianDate:float, tspan:tuple[float])->float:
-        print('rv: {}'.format(position))
-        print('jd: {}'.format(julianDate))
-        print('tspan: {}'.format(tspan))
+    def calc_temperature(self, satellite:SatNode)->float:
+        
+        iters = len(self.path.index)
 
-        Qdir = self.__get_Q_direct()
-        Qalb = self.__get_Q_albedo()
-        Qir = self.__get_Q_ir()
+        Qsol = np.empty(iters, dtype=float)
+        Qalb = np.empty(iters, dtype=float)
+        Qir = np.empty(iters, dtype=float)
 
-        Qtot = Qdir + Qalb + Qir
+        with alive_bar(iters, title='Calculating Heat Flux') as bar:
+            for i in range(iters):
+                row = self.path.iloc[i]
+                satState = row[['RX', 'RY', 'RZ', 'VX', 'VY', 'VZ']].to_numpy()
+                sunState = self.__solar_position(self.jd.value + row['TIME']/(24*3600))
+                sunUnitState = sunState/np.linalg.norm(sunState)
+
+                Qs = satellite.calc_all_Q(satState, sunUnitState)
+
+                if not self.__solar_line_of_sight(self.jd.value + row['TIME']/(24*3600), satState[:3]):
+                    Qs[0] = 0
+
+                Qsol[i] = Qs[0]
+                Qalb[i] = Qs[1]
+                Qir[i] = Qs[2]
+
+                bar()
+
+        self.heatFlux['Q_SOLAR'] = Qsol
+        self.heatFlux['Q_ALBEDO'] = Qalb
+        self.heatFlux['Q_IR'] = Qir
+        self.heatFlux['Q_TOTAL'] = self.heatFlux[['Q_SOLAR', 'Q_ALBEDO', 'Q_IR']].apply(lambda x: sum(x), axis=1)
 
         return
 
@@ -363,60 +389,12 @@ class Orbit:
 
         r = state[:3]
         R = np.linalg.norm(r)
-        v:np.ndarray = state[3:]
+        v = state[3:]
 
         a = -mu * r / (R**3)
         return np.append(v, a)
 
-    def __get_Q_direct(self)->float:
-        """Calculate Heat Flux from Sun (Direct)
-
-        Args:
-            position (StateVector): Position of satellite
-            julianDate (float): julianDate
-
-        Returns:
-            float: Heat Flux from Sun (direct)
-        """
-        
-        # If not in direct LOS of Sun, Q_direct = 0
-
-        # TODO: implement from Garzon et al.
-        print('QDIR')
-
-
-        if not self.__solar_line_of_sight():
-            return 0
-
-        s_hat = self.__solar_position()
-        s_hat = s_hat/np.sum(s_hat)
-
-        b = np.random.uniform(0, 1, 3)
-        n_hat = b/np.sum(b)
-
-        b_hat = np.dot(n_hat, s_hat)
-
-        print('nhat: {}'.format(n_hat))
-        print('shat: {}'.format(s_hat))
-        print('bhat: {}'.format(b_hat))
-
-        if b_hat <= 0:
-            return 0
-
-
-        return 0
-    
-    def __get_Q_albedo(self)->float:
-        # TODO: implement from Garzon et al.
-        print('QALB')
-        return 0
-    
-    def __get_Q_ir(self)->float:
-        # TODO: implement from Garzon et al.
-        print('QIR')
-        return 0
-
-    def __solar_position(self)->np.ndarray:
+    def __solar_position(self, julianDate:float=None)->np.ndarray:
         """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
 
         Calculate position of the Sun relative to Earth based on julian date
@@ -428,7 +406,10 @@ class Orbit:
             np.ndarray: non-normalized position of Sun wrt Earth
         """
 
-        jd = self.jd.value
+        jd = julianDate
+        if julianDate is None:
+            jd = self.jd.value
+
         
         #...Julian days since J2000:
         n     = jd - 2451545
@@ -459,10 +440,13 @@ class Orbit:
 
         return r_S
 
-    def __solar_line_of_sight(self)->bool:
+    def __solar_line_of_sight(self, julianDate:float=None, position:np.ndarray=None)->bool:
 
-        r_earth_sun = self.__solar_position()
-        r_earth_sc = self.state.position
+        r_earth_sun = self.__solar_position(julianDate)
+
+        r_earth_sc = position
+        if position is None:
+            r_earth_sc = self.state.position
 
         theta = np.arccos(np.dot(r_earth_sun, r_earth_sc)/(np.linalg.norm(r_earth_sun)*np.linalg.norm(r_earth_sc)))
         thetaA = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sun)))

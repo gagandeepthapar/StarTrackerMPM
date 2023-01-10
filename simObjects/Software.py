@@ -81,4 +81,8 @@ class QUEST(Projection):
 if __name__ == '__main__':
     roll = UniformParameter(0, 0, 'ROLL', units=c.DEG)
     Q = QUEST()
+    Q.roll = roll
+    Q.randomize(plot=True, mag=6)
+    plt.show()
+
     print(Q)

@@ -15,6 +15,8 @@ ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
 ISSORBIT = os.path.join(curFile, 'utils/','issOrbit.json')
 CUBESATS = os.path.join(curFile, 'utils/', 'celestrakCubeSats.json')
 ACTIVESATS = os.path.join(curFile, 'utils/', 'celestrakActiveSats.json')
+CUBESAT1U = os.path.join(curFile, 'utils/', 'cubesat1UMaterial.json')
+CUBESAT3U = os.path.join(curFile, 'utils/', 'cubesat3UMaterial.json')
 
 """ MEDIA """
 MEDIA = os.path.join(curFile, 'media/')

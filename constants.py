@@ -18,6 +18,10 @@ ACTIVESATS = os.path.join(curFile, 'utils/', 'celestrakActiveSats.json')
 CUBESAT1U = os.path.join(curFile, 'utils/', 'cubesat1UMaterial.json')
 CUBESAT3U = os.path.join(curFile, 'utils/', 'cubesat3UMaterial.json')
 
+""" CATALOG INFO """
+BSC5PKL = os.path.join(curFile, 'utils/', 'BSC5PKL.pkl')
+BSC5BIN = os.path.join(curFile, 'utils/', 'BSC5')
+
 """ MEDIA """
 MEDIA = os.path.join(curFile, 'media/')
 EFFECTPLOTS = os.path.join(MEDIA, 'effectAnalysis/')

@@ -111,6 +111,7 @@ class OrbitData:
             tlePD = self.__read_TLE_to_df(tleJSONFP)
         
         self.TLES = tlePD
+        # self.TLES['THETA'] = self.TLES.apply(self.__calc_theta, axis=1)
 
         self.params = self.__create_params()
 
@@ -127,6 +128,7 @@ class OrbitData:
                     "RAAN":[tle.raan],
                     "ARG":[tle.arg],
                     "SEMI":[tle.a],
+                    "MEAN_ANOMALY":[tle.mean_anomaly],
                     "MEAN_MOTION":[tle.mean_motion],
                     }
 
@@ -146,6 +148,7 @@ class OrbitData:
         arg = np.empty(filelen, dtype=float)
         semi = np.empty(filelen, dtype=float)
         mean_mot = np.empty(filelen, dtype=float)
+        mean_anom = np.empty(filelen, dtype=float)
 
         with alive_bar(filelen, title='Reading in TLE Data') as bar:
             for i in range(filelen):
@@ -157,6 +160,7 @@ class OrbitData:
                 arg[i] = tle.arg
                 semi[i] = tle.a
                 mean_mot[i] = tle.mean_motion
+                mean_anom[i] = tle.mean_anomaly
 
                 bar()
 
@@ -166,6 +170,7 @@ class OrbitData:
                     "RAAN":raan,
                     "ARG":arg,
                     "SEMI":semi,
+                    "MEAN_ANOMALY":mean_anom,
                     "MEAN_MOTION":mean_mot,
                     }
         
@@ -173,6 +178,32 @@ class OrbitData:
 
         return df
     
+    def __calc_theta(self,x):
+        mean_anom = x['MEAN_ANOMALY']
+        ecc = x['ECC']
+        Me = np.deg2rad(mean_anom)
+        
+        E_0 = Me + ecc
+        if Me < np.pi:
+            E_0 = Me - ecc
+
+        f = lambda E: Me - E + ecc*np.sin(E)
+        fp = lambda E: -1 + ecc*np.sin(E)
+        newt = lambda E: E - f(E)/fp(E)
+
+        E_1 = newt(E_0)
+        err = np.abs(E_1 - E_0)
+
+        while err > 1e-8:
+            E_0 = E_1
+            E_1 = newt(E_0)
+            err = np.abs(E_1 - E_0)
+        
+        TA = 2*c.atand((np.sqrt((1+ecc)/(1-ecc)) * np.tan(E_1/2)))
+        theta = np.mod(TA, 360)
+        # print(theta)
+        return theta
+
     def __create_params(self)->dict:
         param_dict = {}
 
@@ -216,7 +247,7 @@ class Orbit:
                        name:str = None,
                        orbitData:OrbitData=None)->None:
 
-        self.__orbitData = orbitData
+        self.orbitData:OrbitData = orbitData
 
         self.inc:Parameter = self.__set_parameter(incParam, "INC")
         self.ecc:Parameter = self.__set_parameter(eccParam, "ECC")
@@ -224,7 +255,7 @@ class Orbit:
 
         self.arg = UniformParameter(0, 360, 'ARG', c.DEG)
         self.raan = UniformParameter(0, 360, 'RAAN', c.DEG)
-        self.theta = UniformParameter(0, 360, 'TA', c.DEG)
+        self.theta = UniformParameter(0, 360, 'THETA', c.DEG)
         self.jd = UniformParameter(c.J2000, c.J2000+365.25, 'JULIAN_DATE', 'days')
 
         self.name = name
@@ -294,12 +325,12 @@ class Orbit:
         if param is not None:
             return param
         
-        if self.__orbitData is None:
+        if self.orbitData is None:
             print('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
-            self.__orbitData = OrbitData()
+            self.orbitData = OrbitData()
         
         print('{}Generating Parameter: {}{}'.format(c.YELLOW,c.DEFAULT,name))
-        return self.__orbitData.params[name]
+        return self.orbitData.params[name]
         
     def __calc_period(self)->float:
         a = self.semi.value

@@ -33,3 +33,9 @@ The environment of space will create disturbances in the Star Tracker Measuremen
 
 ![SampleOrbitLOS](media/inAction/Simulated_Orbit.png)
 ![SampleOrbitNoLOS](media/inAction/SimulatedOrbit_noLOS.png)
+
+#### **Software Effects**
+One of the major components of star tracker accuracy and precision is the software embedded in the hardware. [QUEST](https://en.wikipedia.org/wiki/Quaternion_estimator_algorithm) and [Davenport's q-Method](https://ntrs.nasa.gov/citations/19680021122) are popular methods in extracting the attitude of the satellite from a star tracker. These methods require a set of vectors in the body frame (e.g., the camera frame) and their inertial counterpart to calculate the attitude transformation of the boresight of the star tracker (e.g., via Directional Cosine/Rotation Matrix or Quaternion). The `Projection` dataclass contains information for reading in known star catalogs (specifically the [YBSC Catalog](http://tdc-www.harvard.edu/catalogs/bsc5.html)), selecting a random pointing direction, and generating a list of ECI and Camera Vectors which can then be used to analyze various software affects. A sample run is shown below; the <span style="color:red">red cone</span> shows the inertial attitude of the camera and the <span style="color:blue">blue cone</span> shows the camera rotation projection on the X-axis. A maximum star magnitude of 6 was used.
+
+![StarProjection](media/inAction/projection.png)
+

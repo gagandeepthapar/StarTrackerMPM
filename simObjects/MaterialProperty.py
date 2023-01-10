@@ -1,64 +1,117 @@
 import numpy as np
-
-try:
-    from StarTrackerMPM import constants as c
-except:
-    import sys
-    sys.path.append(sys.path[0] + '/..')
-    import constants as c
+import matplotlib.pyplot as plt
+import sys
+sys.path.append(sys.path[0] + '/..')
+from dataclasses import dataclass
 
 from Parameter import Parameter
-from copy import deepcopy
 
+import constants as c
+from json import load as jsonload
+
+
+@dataclass
 class Material:
 
-    def __init__(self, Absorptivity:Parameter=None,
-                       Emissivity:Parameter=None,
-                       Area:float=None,
-                       *,
-                       name:str="Generic")->None:
-
-        self.abs = self.__set_parameter(Absorptivity, "Absorptivity")
-        self.emi = self.__set_parameter(Emissivity, "Emissivity")
-        self.area = self.__set_parameter(Area, "Area")
-        self.name = name
-
-        self.faceVector = None
-
-        return
+    alpha:Parameter=None
+    emi:Parameter=None
+    area:Parameter=None
     
+    name:str="GENERIC"
+    jsonFp:str=c.CUBESAT1U
+
     def __repr__(self)->str:
-        name = "Material: {}"\
-                "\n\t{}"\
-                "\n\t{}"\
-                "\n\t{}".format(self.name, self.abs, self.emi, self.area)
+        name = "MATERIAL: {}".format(self.name)        
         return name
+
+    def __post_init__(self)->None:
+        self.alpha = self.__set_parameter(self.alpha, "ABSORPTIVITY")
+        self.emi = self.__set_parameter(self.emi, "EMISSIVITY")
+        self.area = Parameter(c.C1U, 0, 0, name="1U_SIDE")
+
+        self.faceVector:np.ndarray = None
+        return
+
+    def randomize(self)->None:
+        self.alpha.modulate()
+        self.emi.modulate()
+        self.area.modulate()
+        return
 
     def __set_parameter(self, param:Parameter, name:str)->Parameter:
         if param is not None:
             return param
-
-        return Parameter(0.5, 0.05, 0, name=name)    # random parameter; will be updated to be based on known materials eg Aluminum
-
-class SatNode:
-
-    def __init__(self, faceA:Material, faceB:Material, faceC:Material, state:np.ndarray)->None:
         
-        print(faceA is faceB)
+        with open(self.jsonFp) as fp_open:
+            file = jsonload(fp_open)
+        
+        ideal = file[name+"_IDEAL"]
+        stddev = file[name+"_STDDEV"]/3
+        mean = file[name+"_MEAN"]
 
-        self.faces = [faceA, deepcopy(faceA), faceB, deepcopy(faceB), faceC, deepcopy(faceC)]
-        self.state = state
-
-        # self.__set_attitude()
-
-        return
+        return Parameter(ideal,stddev, mean, name=name, units='-')
     
-    def __repr__(self)->str:
-        return 'SAT Node'
+class SatNode:
+    def __init__(self, faceA:Material, faceB:Material, faceC:Material)->None:
+        self.faceA = faceA
+        self.faceB = faceB
+        self.faceC = faceC
+        return
 
-    def get_attitude(self)->tuple[np.ndarray]:
-        position = self.state[:3]
-        velocity = self.state[3:]
+    def randomize(self)->None:
+        self.faceA.randomize()
+        self.faceB.randomize()
+        self.faceC.randomize()
+        return
+
+    def calc_all_Q(self, state:np.ndarray, solarVec:np.ndarray)->np.ndarray[float]:
+        
+        attitude = self.__get_attitude(state)
+
+        Qsol = self.__calc_Q_solar(solarVec, attitude)
+        Qalb = self.__calc_Q_alb()
+        Qir = self.__calc_Q_ir(state[:3])
+
+        return np.array([Qsol, Qalb, Qir])
+
+    def __calc_Q_solar(self, solarUnitVec:np.ndarray, attitude:np.ndarray)->float:
+
+        Qsol = 0
+
+        for unit, face in zip(attitude, [self.faceA, self.faceB, self.faceC]):
+            cosb = np.abs(np.dot(unit, solarUnitVec))
+            Qsol += face.alpha.value * face.area.value * cosb * c.SOLARFLUX
+
+        return Qsol
+
+    def __calc_Q_alb(self)->float:
+
+        #TODO: implement view factor calculations instead of average view factor
+        F = 0.4
+        gamma = 0.273
+
+        Qalb = 0
+        for face in [self.faceA, self.faceB, self.faceC]:
+            Qalb += 2 * face.alpha.value * face.area.value * gamma * c.EARTHFLUX * F
+
+        return Qalb
+
+    def __calc_Q_ir(self, position:np.ndarray)->float:
+
+        h = np.linalg.norm(position)/c.EARTHRAD
+        
+        Fa = 1/(h**2)
+        Fb = -np.sqrt(h**2-1)/(np.pi*h**2) + 1/np.pi * np.arctan(1/(np.sqrt(h**2-1)))
+
+        QirA = 2 * self.faceA.emi.value * self.faceA.area.value * c.EARTHFLUX * Fa
+        QirB = 2 * self.faceB.emi.value * self.faceB.area.value * c.EARTHFLUX * Fb
+        QirC = 2 * self.faceC.emi.value * self.faceC.area.value * c.EARTHFLUX * Fb
+
+        return QirA + QirB + QirC
+
+    def __get_attitude(self, state:np.ndarray)->tuple[np.ndarray]:
+        position = state[:3]/np.linalg.norm(state[:3])
+        velocity = state[3:]/np.linalg.norm(state[3:])
 
         z = -1*position/np.linalg.norm(position)
         
@@ -68,27 +121,6 @@ class SatNode:
         y = np.cross(z, x)
         return (x, y, z)
 
-    def __set_attitude(self)->None:
-
-        faceVecs = self.get_attitude()
-        print(faceVecs)
-
-        for i in range(3):
-            print(2*i)
-            print(2*i + 1)
-            print(faceVecs[i])
-            self.faces[2*i].faceVector = faceVecs[i]
-            self.faces[2*i + 1].faceVector = -1*(faceVecs[i])
-
-        return
-
 if __name__ == '__main__':
-    al = Material(name='a')
-    bl = Material(name='b')
-    cl = Material(name='cl')
-    p = SatNode(al, al, cl, np.array([1, 2, 3, 4, 5, 6]))
-
-    for i in range(6):
-        print(p.faces[i].faceVector)
-
-    # p.get_attitude(rv)
+    al = Material()
+    sat = SatNode(al, al, al)

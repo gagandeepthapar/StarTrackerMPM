@@ -61,10 +61,13 @@ def atand(val:float)->float:
     return np.rad2deg(np.arctan(val))
 
 """ CONSTANTS """
-SOLARFLUX = 1337
+SOLARFLUX = 1367
+EARTHFLUX = 213
 EARTHMU = 398600
 EARTHRAD = 6378
 AU = 149597870.691
 J2000 = 2451545
 JYEAR = 365.25
 STEFBOLTZ = 5.670367e-8
+C1U = 0.01
+C3U = 0.03

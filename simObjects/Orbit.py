@@ -458,21 +458,22 @@ class Orbit:
 
         fig = plt.figure()
         ax = plt.axes(projection='3d')
+        # fig.add_axes(ax)
         
-        al = Material()
-        sat = SatNode(al, al, al, self.state.state)
-        att = sat.get_attitude()
+        # al = Material()
+        # sat = SatNode(al, al, al)
+        # att = sat.get_attitude()
 
         # sat pos and path
         ax.plot(self.path['RX'],self.path['RY'], self.path['RZ'], 'y--', label='orbit')
         ax.scatter(*self.state.position, c='r', label='satellite')
-        ax.quiver(*self.state.position, *(att[0]), length=1500, color='red', label=r'$Sat_{+X}$')
-        ax.quiver(*self.state.position, *(att[1]), length=1500, color='darkviolet',  label=r'$Sat_{+Y}$')
-        ax.quiver(*self.state.position, *(att[2]), length=1500, color='blue',  label=r'$Sat_{+Z}$')
+        # ax.quiver(*self.state.position, *(att[0]), length=1500, color='red', label=r'$Sat_{+X}$')
+        # ax.quiver(*self.state.position, *(att[1]), length=1500, color='darkviolet',  label=r'$Sat_{+Y}$')
+        # ax.quiver(*self.state.position, *(att[2]), length=1500, color='blue',  label=r'$Sat_{+Z}$')
 
-        ax.quiver(*self.state.position, *(-1*att[0]), length=1500, color='red', linestyle='--', label=r'$Sat_{-X}$')
-        ax.quiver(*self.state.position, *(-1*att[1]), length=1500, color='darkviolet', linestyle='--',  label=r'$Sat_{-Y}$')
-        ax.quiver(*self.state.position, *(-1*att[2]), length=1500, color='blue', linestyle='--',  label=r'$Sat_{-Z}$')
+        # ax.quiver(*self.state.position, *(-1*att[0]), length=1500, color='red', linestyle='--', label=r'$Sat_{-X}$')
+        # ax.quiver(*self.state.position, *(-1*att[1]), length=1500, color='darkviolet', linestyle='--',  label=r'$Sat_{-Y}$')
+        # ax.quiver(*self.state.position, *(-1*att[2]), length=1500, color='blue', linestyle='--',  label=r'$Sat_{-Z}$')
 
         # earth
         x, y, z = self.__earth_model()
@@ -512,4 +513,12 @@ class Orbit:
 
 if __name__ == '__main__':
     o = Orbit()
+    a = Material()
+    sat = SatNode(a, a, a)
+ 
+    o.calc_temperature(sat)
+    print(o.heatFlux)
+    
+    o.heatFlux['Q_TOTAL'].plot()
 
+    plt.show()

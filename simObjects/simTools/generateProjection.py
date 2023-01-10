@@ -1,3 +1,5 @@
+import sys
+
 import argparse
 import json
 import random
@@ -7,10 +9,9 @@ import numpy as np
 import pandas as pd
 from matplotlib.patches import Rectangle
 
-from catalogReader.catalogReader import CatalogReader
-from catalogReader.headerFormats import YaleHeader
-from catalogReader.star import YaleStar
-from python_scripts import constants
+import constants as c
+
+sys.path.append(sys.path[0] + '/../..')
 
 PI = np.pi
 MAXMAG = 5
@@ -235,8 +236,8 @@ def driver(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:float=0, cfg:dic
 
     # extract config file information and convert to rad where applicable
     camera_fov = cfg['FOV'] * PI/180
-    img_wd = cfg['IMAGE_X']
-    img_ht = cfg['IMAGE_Y']
+    img_wd = cfg['IMAGE_WIDTH']
+    img_ht = cfg['IMAGE_HEIGHT']
 
     print(f'\tImage Size: {img_wd}x{img_ht}')
     print(f'\tFOV: {camera_fov*180/PI}')
@@ -267,11 +268,11 @@ def driver(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:float=0, cfg:dic
 
     # print starlist information; store information to csv
     print(f'\tFinal Starlist Length: {len(fstars.index)}\n')
-    print(fstars.to_string())
+    # print(fstars.to_string())
 
     
-    if showPlot:
-        plt.show()
+    # if showPlot:
+    #     plt.show()
     
     if saveFrame is not None:
         if saveFrame[-4:] == '.pkl':
@@ -452,7 +453,7 @@ def parse_arguments()->argparse.Namespace:
 
     parser = argparse.ArgumentParser(description="Set camera and simulation properties")
 
-    parser.add_argument('-fp', help='Set camera config filepath; Default: Alvium', type=str, default=constants.DEFAULT_ALVIUM)
+    parser.add_argument('-fp', help='Set camera config filepath; Default: Alvium', type=str, default=c.ALVIUM_CAM)
     parser.add_argument('-ra', help='Set Right Ascension [deg]; Default: Random [-180, 180]', type=float, default=random.uniform(-180, 180))
     parser.add_argument('-dec', help='Set Declination [dec]; Default: Random [-180, 180]', type=float, default=random.uniform(-180, 180))
     parser.add_argument('-roll', help='Set Roll Angle [deg]; Default: Random [-180, 180]', type=float, default=random.uniform(-180, 180))    
@@ -467,8 +468,8 @@ def parse_arguments()->argparse.Namespace:
 def generate_projection(ra:float=random.uniform(-180,180),
                         dec:float=random.uniform(-180, 180),
                         roll:float=random.uniform(-180, 180),
-                        cfg_fp:str=constants.DEFAULT_ALVIUM,
-                        catpkl_fp:str=constants.YBSC_PATH,
+                        cfg_fp:str=c.ALVIUM_CAM,
+                        catpkl_fp:str=c.BSC5PKL,
                         camera_mag:float=None,
                         plot:bool=False,
                         save:str=None)->pd.DataFrame:
@@ -487,18 +488,3 @@ def generate_projection(ra:float=random.uniform(-180,180),
     fstars = driver(star_frame, ra, dec, roll, cfg, showPlot=plot, saveFrame=save)
 
     return fstars
-
-if __name__ == '__main__':
-    # args = parse_arguments()
-
-    # generate_projection(ra=args.ra,
-    #      dec=args.dec,
-    #      roll=args.roll,
-    #      cfg_fp=args.fp,
-    #      camera_mag= args.m,
-    #      plot=bool(args.p),
-    #      save=args.s)
-
-
-    ybsc = pd.read_pickle(constants.YBSC_PATH)
-    _plot_map(ybsc)

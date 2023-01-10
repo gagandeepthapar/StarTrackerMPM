@@ -26,9 +26,15 @@
     "DISTORTION_STDDEV": 0.1,
     "DISTORTION_UNITS": "-",
     
-    "IMAGE_HEIGHT":2064,
-    "IMAGE_WIDTH": 1544,
+    "IMAGE_WIDTH":2064,
+    "IMAGE_HEIGHT": 1544,
     
     "PIXEL_HEIGHT": 0.00345,
-    "PIXEL_WIDTH":  0.00345
+    "PIXEL_WIDTH":  0.00345,
+
+    "CATALOG_TYPE": "BSC5",
+    "CATALOG_FILE": "./BSC5",
+    "FOV":20,
+    "MAX_MAG": 5
+
 }

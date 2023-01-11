@@ -286,6 +286,8 @@ class Orbit:
 
         self.state = self.__calc_state()
         self.path = self.__propagate_orbit()
+
+        self.heatFlux = pd.DataFrame()
         self.heatFlux['TIME'] = self.path['TIME']
 
         return
@@ -297,6 +299,7 @@ class Orbit:
         Qsol = np.empty(iters, dtype=float)
         Qalb = np.empty(iters, dtype=float)
         Qir = np.empty(iters, dtype=float)
+        Qtot = np.empty(iters, dtype=float)
 
         with alive_bar(iters, title='Calculating Heat Flux') as bar:
             for i in range(iters):
@@ -314,12 +317,16 @@ class Orbit:
                 Qalb[i] = Qs[1]
                 Qir[i] = Qs[2]
 
+                Qtot[i] = np.sum(Qs)
+
                 bar()
 
         self.heatFlux['Q_SOLAR'] = Qsol
         self.heatFlux['Q_ALBEDO'] = Qalb
         self.heatFlux['Q_IR'] = Qir
-        self.heatFlux['Q_TOTAL'] = self.heatFlux[['Q_SOLAR', 'Q_ALBEDO', 'Q_IR']].apply(lambda x: sum(x), axis=1)
+        self.heatFlux['Q_TOTAL'] = Qtot
+        self.heatFlux['Q_CUMSUM'] = self.heatFlux['Q_TOTAL'].cumsum()
+        self.Q_mean = self.heatFlux['Q_CUMSUM'].iloc[-1]/self.heatFlux['TIME'].iloc[-1]
 
         return
 
@@ -513,12 +520,19 @@ class Orbit:
 
 if __name__ == '__main__':
     o = Orbit()
+    o.randomize()
+
     a = Material()
     sat = SatNode(a, a, a)
  
     o.calc_temperature(sat)
-    print(o.heatFlux)
+    f = np.fft.fft(o.heatFlux['Q_TOTAL'])
     
-    o.heatFlux['Q_TOTAL'].plot()
+    fig = plt.figure()
+    ax = fig.add_subplot(211)
+    ax.plot(f)
+    
+    ax = fig.add_subplot(212)
+    ax.plot(o.heatFlux['Q_TOTAL'])
 
     plt.show()

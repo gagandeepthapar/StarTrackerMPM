@@ -12,6 +12,7 @@ from alive_progress import alive_bar
 from MaterialProperty import Material
 from Parameter import Parameter, UniformParameter
 from scipy.integrate import solve_ivp
+from scipy.fft import dst, dct
 
 import constants as c
 from MaterialProperty import Material, SatNode
@@ -518,21 +519,62 @@ class Orbit:
     
         return x, y, z
 
+def calc_coeffs(data:np.ndarray, coeffs:int=2):
+
+    qdata = data['Q_TOTAL']
+    time = data['TIME']
+
+    star = np.mean(qdata)
+    cfs = np.zeros(coeffs)
+
+    for i in range(coeffs):
+        fdata = (qdata - star)*(np.cos((i+1)*time))
+        cfs[i] = np.sum(fdata) * 2 / time.iloc[-1]
+    
+    print(fdata)
+    
+    return cfs
+
 if __name__ == '__main__':
     o = Orbit()
     o.randomize()
 
     a = Material()
     sat = SatNode(a, a, a)
- 
     o.calc_temperature(sat)
-    f = np.fft.fft(o.heatFlux['Q_TOTAL'])
-    
+
     fig = plt.figure()
-    ax = fig.add_subplot(211)
-    ax.plot(f)
-    
-    ax = fig.add_subplot(212)
-    ax.plot(o.heatFlux['Q_TOTAL'])
+    ax = fig.add_subplot()
+
+    ax.scatter(o.heatFlux['TIME'],o.heatFlux['Q_TOTAL'], s = 1)
+    # ax.plot(o.heatFlux['TIME'], o.heatFlux['Q_TOTAL'])
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Heat Flux [W/m2]')
+    ax.set_title('Heat Flux over Time')
 
     plt.show()
+
+    # o.calc_temperature(sat)
+    # qtot = o.heatFlux[['TIME', 'Q_TOTAL']]
+
+    # q = o.heatFlux['Q_TOTAL'].to_numpy()
+    # fa = calc_coeffs(qtot, 5)
+    # print(fa)
+
+    # Q0 = np.mean(q)
+    # TIME = o.heatFlux['TIME']
+
+    # Qc = Q0
+    # for i in range(len(fa)):
+    #     Qc += fa[i] * np.cos((i+1)*TIME)
+
+    # print(Qc)
+
+    # fig = plt.figure()
+    # ax = fig.add_subplot()
+    # ax.plot(Qc)
+    # ax.plot(q)
+
+    # plt.show()
+
+    # print(np.cos(TIME))

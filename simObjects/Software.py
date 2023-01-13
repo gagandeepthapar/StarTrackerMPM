@@ -100,32 +100,17 @@ class QUEST(Projection):
         quatE = factor * X
         quatN = factor * gamma
         quat = np.array([*quatE, quatN])
-        return quat/np.linalg.norm(quat) 
+        return quat/np.linalg.norm(quat)
 
-    def quat_to_eul(self, quat:np.ndarray)->np.ndarray:
+    def rot_to_quat(self, C:np.ndarray)->np.ndarray:
 
-        # q0 = quat[3]
-        # q1 = quat[0]
-        # q2 = quat[1]
-        # q3 = quat[2]
+        n = 1/2 * np.sqrt(1 + np.trace(C))
+        e1 = 1/4 * (C[1][2] - C[2][1])/n
+        e2 = 1/4 * (C[2][0] - C[0][2])/n
+        e3 = 1/4 * (C[0][1] - C[1][0])/n
 
-        # phi = np.arctan2(2*(q0*q1 + q2*q3), 1-2*(q1**2 + q2**2))
-        # theta = -np.pi/2 + 2*np.arctan2(np.sqrt(1 + 2*(q0*q2 - q1*q3)), np.sqrt(1-2*(q0*q2-q1*q3)))
-        # psi = np.arctan2(2*(q0*q3 + q1*q2), 1-2*(q2**2 + q3**2))
-
-        w = quat[3]
-        x = quat[0]
-        y = quat[1]
-        z = quat[2]
-
-        yaw = np.arcsin(2*x*y + 2*z*w)
-        pitch = np.arctan2(2*x*w - 2*y*z, 1 - 2*x*x - 2*z*z)
-        roll = -1*np.arctan2(2*y*w - 2*x*z, 1 - 2*y*y - 2*z*z)
-
-        eul = [yaw, pitch, roll]
-        eulDeg = [np.rad2deg(ang) for ang in eul]
-
-        return np.array(eulDeg)
+        q = np.array([e1, e2, e3, n])
+        return q
 
     def __calc_B(self, weights:np.ndarray=None)->np.ndarray:
         
@@ -157,7 +142,7 @@ class QUEST(Projection):
 
         return np.transpose(cofactor)
 
-    def __calc_optimal_lambda(self, a:float, b:float, c:float, d:float, k:float, lam0:float=1.1, eps:float=1e-12):
+    def __calc_optimal_lambda(self, a:float, b:float, c:float, d:float, k:float, lam0:float=1.0, eps:float=1e-12):
 
         e0 = lam0
         e1 = lam0 - self.__optimal_lambda_f(e0, a, b, c, d, k)/self.__optimal_lambda_fp(e0, a, b, c)
@@ -186,38 +171,60 @@ class QUEST(Projection):
         C = -c
         return A + B + C
 
+def rotEul(alpha, beta, gamma):
+    alpha = np.deg2rad(alpha)
+    beta = np.deg2rad(beta)
+    gamma = np.deg2rad(gamma)
+
+    Rz = lambda theta: np.array([[np.cos(theta), -np.sin(theta), 0],[np.sin(theta), np.cos(theta), 0],[0,0,1]])
+    Ry = lambda theta: np.array([[np.cos(theta), 0, np.sin(theta)],[0,1,0],[-np.sin(theta), 0, np.cos(theta)]])
+    Rx = lambda theta: np.array([[1,0,0],[0, np.cos(theta), -np.sin(theta)],[0, np.sin(theta), np.cos(theta)]])
+    R = Rz(gamma) @ Ry(beta) @ Rx(alpha)
+
+    return R
+
 if __name__ == '__main__':
     # roll = UniformParameter(0, 0, 'ROLL', units=c.DEG)
     Q = QUEST()
-    # print(Q.frame)
 
-    ra = np.deg2rad(10)
-    dec = np.deg2rad(20)
+    numStars = 10
+    a = 10
+    b = 20
+    c = 30
+    
+    print('{}x{}x{}'.format(a, b, c))
 
-    print(ra)
-    print(dec)
+    C = rotEul(a, b, c)
 
-    bs_x = np.cos(ra)*np.cos(dec)
-    bs_y = np.sin(ra)*np.cos(dec)
-    bs_z = np.sin(dec)
+    eci = np.zeros((numStars,3))
+    cv = np.zeros((numStars, 3))
+    for i in range(numStars):
+        c = np.random.uniform(0, 1, 3)
+        eci[i] = c/np.linalg.norm(c)
+        cv[i] = C @ eci[i]
 
-    f = {'CV_X': [1], 'CV_Y':[0], 'CV_Z':[0],
-         'ECI_X': [bs_x], 'ECI_Y':[bs_y], 'ECI_Z': [bs_z]}
+    print(eci)
+    print(cv)
+    # print(eci.T[0])
+
+    f = {'ECI_X': eci.T[0],
+         'ECI_Y': eci.T[1],
+         'ECI_Z': eci.T[2],
+         'CV_X': cv.T[0],
+         'CV_Y': cv.T[1],
+         'CV_Z': cv.T[2],}
 
     Q.frame = pd.DataFrame(f)
-
     print(Q.frame)
     q = Q.get_attitude()
+    print('CHECK:')
+    print(Q.rot_to_quat(C))
     print(q)
-    e = Q.quat_to_eul(q)
-    print(e)
-
-    pd.set_option("display.precision", 12)
-    print(Q.frame['ECI_X'])
-    # Q.roll = roll
-
-    # Q.randomize(mag=5.5)
-    # q = Q.get_attitude()
-    # print(q)
-    # e = Q.quat_to_eul(q)
+    # e=Q.quat_to_eul(q)
     # print(e)
+
+    # print(C@C.T)
+    # print(eci)
+    # print(cv)
+
+

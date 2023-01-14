@@ -11,7 +11,6 @@ from alive_progress import alive_bar
 from Parameter import Parameter, UniformParameter
 
 import constants as c
-# from simTools import generateProjection as gp
 from json import load as jsonload
 
 @dataclass

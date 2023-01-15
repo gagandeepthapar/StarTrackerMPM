@@ -4,20 +4,15 @@ sys.path.append(sys.path[0] + '/..')
 import numpy as np
 import pandas as pd
 
-from dataclasses import dataclass
-
-import matplotlib.pyplot as plt
-from alive_progress import alive_bar
 from Parameter import Parameter, UniformParameter
 
 import constants as c
 from json import load as jsonload
 
-@dataclass
 class Projection:
-    def __init__(self, Centroid_Deviation:Parameter,* ,cameraFP:str=c.ALVIUM_CAM,numStars:int=7)->None:
+    def __init__(self, Centroid_Deviation:Parameter=None, * , centroidFP:str=c.SIMPLE_CENTROID, cameraFP:str=c.ALVIUM_CAM, numStars:int=7)->None:
 
-        self.dev = Centroid_Deviation
+        self.dev = self.__set_parameter(Centroid_Deviation, centroidFP)
 
         self.numStars = numStars
         self.imWidth, self.imHeight, self.focal = self.__read_camera(cameraFP)
@@ -25,32 +20,64 @@ class Projection:
         self.image_x = UniformParameter(0, self.imWidth, 'IMAGE_X', units='px')
         self.image_y = UniformParameter(0, self.imHeight, 'IMAGE_Y', units='px')
 
-        self.alpha = UniformParameter(0, 360, 'ALPHA_ANG', units=c.DEG)
-        self.beta = UniformParameter(0, 360, 'BETA_ANG', units=c.DEG)
-        self.gamma = UniformParameter(0, 360, 'GAMMA_ANG', units=c.DEG)
-
         self.randomize()
         return
 
     def __repr__(self)->str:
-        name = 'PROJECTION'
+        name = 'PROJECTION @ {}'.format(self.quat_real)
         return name
     
     def randomize(self, num:int=None)->None:
         if num is None:
             num = self.numStars
         
-        self.C = self.__calc_rot_matr()
+        self.quat_real:np.ndarray = self.__random_quat()
 
-        frame = self.__generate_px_position(num)
+        frame:pd.DataFrame = self.__generate_px_position(num)
         frame['DEV_X'] = [self.dev.modulate() for _ in range(num)]
         frame['DEV_Y'] = [self.dev.modulate() for _ in range(num)]
         frame['CV_REAL'] = frame.apply(self.__px_to_cv, axis=1, args=(False,))
-        frame['CV'] = frame.apply(self.__px_to_cv, axis=1, args=(True,))
-        frame['ECI'] = frame['CV_REAL'].apply(lambda x: (self.C@x))
+        frame['CV_EST'] = frame.apply(self.__px_to_cv, axis=1, args=(True,))
+        frame['ECI_REAL'] = frame['CV_REAL'].apply(self.__quat_mult)
 
         self.frame = frame
         return 
+
+    def quat_to_ra_dec(self, q:np.ndarray)->np.ndarray:
+        q1 = q[0]
+        q2 = q[1]
+        q3 = q[2]
+        q4 = q[3]
+
+        ra = np.arctan2(q2*q3 - q1*q4, q1*q3 + q2*q4)
+        dec = np.arcsin(-q1**2*np.sqrt(q2**2 + q3**2 + q4**2))
+        roll = np.arctan2(q2*q3 + q1*q4, -q1*q3 + q2*q4)
+
+        angs = [ra, dec, roll]
+        angDecs = [np.rad2deg(ang) for ang in angs]
+
+        return angDecs
+    
+    def calc_diff(self, Q_calc:np.ndarray)->float:
+
+        realRA = self.quat_to_ra_dec(self.quat_real)
+        calcRA = self.quat_to_ra_dec(Q_calc)
+        diff = [(a-b)*3600 for (a,b) in zip(realRA, calcRA)]
+
+        return np.linalg.norm(diff)
+
+    def __set_parameter(self, param:Parameter, paramFP:str)->Parameter:
+        if param is not None:
+            return param
+        
+        with open(paramFP) as fp_open:
+            file = jsonload(fp_open)
+        ideal = file['IDEAL']
+        mean = file['MEAN']
+        std = file['STDDEV']
+        units = file['UNITS']
+
+        return Parameter(ideal, std, mean, name="CENTROID_ACCURACY", units=units)
 
     def __generate_px_position(self, num:int)->pd.DataFrame:
         imx = np.empty(num, dtype=float)
@@ -72,7 +99,7 @@ class Projection:
         f = file['FOCAL_LENGTH_IDEAL']/file['PIXEL_HEIGHT']
         return imX, imY, f
     
-    def __px_to_cv(self, row:pd.Series, devFlag:bool=False)->np.ndarray:
+    def __px_to_cv(self, row:pd.Series, devFlag:bool)->np.ndarray:
         x = row['IMAGE_X']
         y = row['IMAGE_Y']
         

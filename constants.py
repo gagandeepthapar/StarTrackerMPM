@@ -11,10 +11,16 @@ IDEAL_CAM = os.path.join(curFile, 'utils/', 'idealCamera.json')
 SUNETAL_CAM = os.path.join(curFile, 'utils/', 'sunEtalCamera.json')
 ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
 
-""" SATELLITE/MATERIAL PROPERTIES """
+""" SOFTWARE CONFIGS """
+SIMPLE_CENTROID = os.path.join(curFile, 'utils/', 'simpleCentroid.json')
+LEAST_SQUARES_CENTROID = os.path.join(curFile, 'utils/', 'leastSquaresCentroid.json')
+
+""" ORBIT CONFIGS """
 ISSORBIT = os.path.join(curFile, 'utils/','issOrbit.json')
 CUBESATS = os.path.join(curFile, 'utils/', 'celestrakCubeSats.json')
 ACTIVESATS = os.path.join(curFile, 'utils/', 'celestrakActiveSats.json')
+
+""" SATELLITE CONFIGS """
 CUBESAT1U = os.path.join(curFile, 'utils/', 'cubesat1UMaterial.json')
 CUBESAT3U = os.path.join(curFile, 'utils/', 'cubesat3UMaterial.json')
 

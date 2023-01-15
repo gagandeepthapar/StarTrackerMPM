@@ -11,10 +11,22 @@ IDEAL_CAM = os.path.join(curFile, 'utils/', 'idealCamera.json')
 SUNETAL_CAM = os.path.join(curFile, 'utils/', 'sunEtalCamera.json')
 ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
 
-""" SATELLITE/MATERIAL PROPERTIES """
+""" SOFTWARE CONFIGS """
+SIMPLE_CENTROID = os.path.join(curFile, 'utils/', 'simpleCentroid.json')
+LEAST_SQUARES_CENTROID = os.path.join(curFile, 'utils/', 'leastSquaresCentroid.json')
+
+""" ORBIT CONFIGS """
 ISSORBIT = os.path.join(curFile, 'utils/','issOrbit.json')
 CUBESATS = os.path.join(curFile, 'utils/', 'celestrakCubeSats.json')
 ACTIVESATS = os.path.join(curFile, 'utils/', 'celestrakActiveSats.json')
+
+""" SATELLITE CONFIGS """
+CUBESAT1U = os.path.join(curFile, 'utils/', 'cubesat1UMaterial.json')
+CUBESAT3U = os.path.join(curFile, 'utils/', 'cubesat3UMaterial.json')
+
+""" CATALOG INFO """
+BSC5PKL = os.path.join(curFile, 'utils/', 'BSC5PKL.pkl')
+BSC5BIN = os.path.join(curFile, 'utils/', 'BSC5')
 
 """ MEDIA """
 MEDIA = os.path.join(curFile, 'media/')
@@ -59,10 +71,13 @@ def atand(val:float)->float:
     return np.rad2deg(np.arctan(val))
 
 """ CONSTANTS """
-SOLARFLUX = 1337
+SOLARFLUX = 1367
+EARTHFLUX = 213
 EARTHMU = 398600
 EARTHRAD = 6378
 AU = 149597870.691
 J2000 = 2451545
 JYEAR = 365.25
 STEFBOLTZ = 5.670367e-8
+C1U = 0.01
+C3U = 0.03

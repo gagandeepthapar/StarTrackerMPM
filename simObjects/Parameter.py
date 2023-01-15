@@ -33,7 +33,6 @@ class Parameter:
         self.value = self.modulate()
         self.reset()
 
-
         return
     
     def __repr__(self)->str:

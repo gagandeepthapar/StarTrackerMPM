@@ -111,6 +111,7 @@ class OrbitData:
             tlePD = self.__read_TLE_to_df(tleJSONFP)
         
         self.TLES = tlePD
+        # self.TLES['THETA'] = self.TLES.apply(self.__calc_theta, axis=1)
 
         self.params = self.__create_params()
 
@@ -127,6 +128,7 @@ class OrbitData:
                     "RAAN":[tle.raan],
                     "ARG":[tle.arg],
                     "SEMI":[tle.a],
+                    "MEAN_ANOMALY":[tle.mean_anomaly],
                     "MEAN_MOTION":[tle.mean_motion],
                     }
 
@@ -146,6 +148,7 @@ class OrbitData:
         arg = np.empty(filelen, dtype=float)
         semi = np.empty(filelen, dtype=float)
         mean_mot = np.empty(filelen, dtype=float)
+        mean_anom = np.empty(filelen, dtype=float)
 
         with alive_bar(filelen, title='Reading in TLE Data') as bar:
             for i in range(filelen):
@@ -157,6 +160,7 @@ class OrbitData:
                 arg[i] = tle.arg
                 semi[i] = tle.a
                 mean_mot[i] = tle.mean_motion
+                mean_anom[i] = tle.mean_anomaly
 
                 bar()
 
@@ -166,6 +170,7 @@ class OrbitData:
                     "RAAN":raan,
                     "ARG":arg,
                     "SEMI":semi,
+                    "MEAN_ANOMALY":mean_anom,
                     "MEAN_MOTION":mean_mot,
                     }
         
@@ -173,6 +178,32 @@ class OrbitData:
 
         return df
     
+    def __calc_theta(self,x):
+        mean_anom = x['MEAN_ANOMALY']
+        ecc = x['ECC']
+        Me = np.deg2rad(mean_anom)
+        
+        E_0 = Me + ecc
+        if Me < np.pi:
+            E_0 = Me - ecc
+
+        f = lambda E: Me - E + ecc*np.sin(E)
+        fp = lambda E: -1 + ecc*np.sin(E)
+        newt = lambda E: E - f(E)/fp(E)
+
+        E_1 = newt(E_0)
+        err = np.abs(E_1 - E_0)
+
+        while err > 1e-8:
+            E_0 = E_1
+            E_1 = newt(E_0)
+            err = np.abs(E_1 - E_0)
+        
+        TA = 2*c.atand((np.sqrt((1+ecc)/(1-ecc)) * np.tan(E_1/2)))
+        theta = np.mod(TA, 360)
+        # print(theta)
+        return theta
+
     def __create_params(self)->dict:
         param_dict = {}
 
@@ -216,7 +247,7 @@ class Orbit:
                        name:str = None,
                        orbitData:OrbitData=None)->None:
 
-        self.__orbitData = orbitData
+        self.orbitData:OrbitData = orbitData
 
         self.inc:Parameter = self.__set_parameter(incParam, "INC")
         self.ecc:Parameter = self.__set_parameter(eccParam, "ECC")
@@ -224,8 +255,13 @@ class Orbit:
 
         self.arg = UniformParameter(0, 360, 'ARG', c.DEG)
         self.raan = UniformParameter(0, 360, 'RAAN', c.DEG)
-        self.theta = UniformParameter(0, 360, 'TA', c.DEG)
+        self.theta = UniformParameter(0, 360, 'THETA', c.DEG)
         self.jd = UniformParameter(c.J2000, c.J2000+365.25, 'JULIAN_DATE', 'days')
+
+        self.T:float=None
+        self.state:StateVector=None
+        self.path:pd.DataFrame=None
+        self.heatFlux = pd.DataFrame()
 
         self.name = name
         self.randomize()
@@ -250,19 +286,40 @@ class Orbit:
 
         self.state = self.__calc_state()
         self.path = self.__propagate_orbit()
+        self.heatFlux['TIME'] = self.path['TIME']
 
         return
 
-    def calc_temperature(self, position:StateVector, julianDate:float, tspan:tuple[float])->float:
-        print('rv: {}'.format(position))
-        print('jd: {}'.format(julianDate))
-        print('tspan: {}'.format(tspan))
+    def calc_temperature(self, satellite:SatNode)->float:
+        
+        iters = len(self.path.index)
 
-        Qdir = self.__get_Q_direct()
-        Qalb = self.__get_Q_albedo()
-        Qir = self.__get_Q_ir()
+        Qsol = np.empty(iters, dtype=float)
+        Qalb = np.empty(iters, dtype=float)
+        Qir = np.empty(iters, dtype=float)
 
-        Qtot = Qdir + Qalb + Qir
+        with alive_bar(iters, title='Calculating Heat Flux') as bar:
+            for i in range(iters):
+                row = self.path.iloc[i]
+                satState = row[['RX', 'RY', 'RZ', 'VX', 'VY', 'VZ']].to_numpy()
+                sunState = self.__solar_position(self.jd.value + row['TIME']/(24*3600))
+                sunUnitState = sunState/np.linalg.norm(sunState)
+
+                Qs = satellite.calc_all_Q(satState, sunUnitState)
+
+                if not self.__solar_line_of_sight(self.jd.value + row['TIME']/(24*3600), satState[:3]):
+                    Qs[0] = 0
+
+                Qsol[i] = Qs[0]
+                Qalb[i] = Qs[1]
+                Qir[i] = Qs[2]
+
+                bar()
+
+        self.heatFlux['Q_SOLAR'] = Qsol
+        self.heatFlux['Q_ALBEDO'] = Qalb
+        self.heatFlux['Q_IR'] = Qir
+        self.heatFlux['Q_TOTAL'] = self.heatFlux[['Q_SOLAR', 'Q_ALBEDO', 'Q_IR']].apply(lambda x: sum(x), axis=1)
 
         return
 
@@ -294,12 +351,12 @@ class Orbit:
         if param is not None:
             return param
         
-        if self.__orbitData is None:
+        if self.orbitData is None:
             print('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
-            self.__orbitData = OrbitData()
+            self.orbitData = OrbitData()
         
         print('{}Generating Parameter: {}{}'.format(c.YELLOW,c.DEFAULT,name))
-        return self.__orbitData.params[name]
+        return self.orbitData.params[name]
         
     def __calc_period(self)->float:
         a = self.semi.value
@@ -332,60 +389,12 @@ class Orbit:
 
         r = state[:3]
         R = np.linalg.norm(r)
-        v:np.ndarray = state[3:]
+        v = state[3:]
 
         a = -mu * r / (R**3)
         return np.append(v, a)
 
-    def __get_Q_direct(self)->float:
-        """Calculate Heat Flux from Sun (Direct)
-
-        Args:
-            position (StateVector): Position of satellite
-            julianDate (float): julianDate
-
-        Returns:
-            float: Heat Flux from Sun (direct)
-        """
-        
-        # If not in direct LOS of Sun, Q_direct = 0
-
-        # TODO: implement from Garzon et al.
-        print('QDIR')
-
-
-        if not self.__solar_line_of_sight():
-            return 0
-
-        s_hat = self.__solar_position()
-        s_hat = s_hat/np.sum(s_hat)
-
-        b = np.random.uniform(0, 1, 3)
-        n_hat = b/np.sum(b)
-
-        b_hat = np.dot(n_hat, s_hat)
-
-        print('nhat: {}'.format(n_hat))
-        print('shat: {}'.format(s_hat))
-        print('bhat: {}'.format(b_hat))
-
-        if b_hat <= 0:
-            return 0
-
-
-        return 0
-    
-    def __get_Q_albedo(self)->float:
-        # TODO: implement from Garzon et al.
-        print('QALB')
-        return 0
-    
-    def __get_Q_ir(self)->float:
-        # TODO: implement from Garzon et al.
-        print('QIR')
-        return 0
-
-    def __solar_position(self)->np.ndarray:
+    def __solar_position(self, julianDate:float=None)->np.ndarray:
         """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
 
         Calculate position of the Sun relative to Earth based on julian date
@@ -397,7 +406,10 @@ class Orbit:
             np.ndarray: non-normalized position of Sun wrt Earth
         """
 
-        jd = self.jd.value
+        jd = julianDate
+        if julianDate is None:
+            jd = self.jd.value
+
         
         #...Julian days since J2000:
         n     = jd - 2451545
@@ -428,10 +440,13 @@ class Orbit:
 
         return r_S
 
-    def __solar_line_of_sight(self)->bool:
+    def __solar_line_of_sight(self, julianDate:float=None, position:np.ndarray=None)->bool:
 
-        r_earth_sun = self.__solar_position()
-        r_earth_sc = self.state.position
+        r_earth_sun = self.__solar_position(julianDate)
+
+        r_earth_sc = position
+        if position is None:
+            r_earth_sc = self.state.position
 
         theta = np.arccos(np.dot(r_earth_sun, r_earth_sc)/(np.linalg.norm(r_earth_sun)*np.linalg.norm(r_earth_sc)))
         thetaA = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sun)))
@@ -443,21 +458,22 @@ class Orbit:
 
         fig = plt.figure()
         ax = plt.axes(projection='3d')
+        # fig.add_axes(ax)
         
-        al = Material()
-        sat = SatNode(al, al, al, self.state.state)
-        att = sat.get_attitude()
+        # al = Material()
+        # sat = SatNode(al, al, al)
+        # att = sat.get_attitude()
 
         # sat pos and path
         ax.plot(self.path['RX'],self.path['RY'], self.path['RZ'], 'y--', label='orbit')
         ax.scatter(*self.state.position, c='r', label='satellite')
-        ax.quiver(*self.state.position, *(att[0]), length=1500, color='red', label=r'$Sat_{+X}$')
-        ax.quiver(*self.state.position, *(att[1]), length=1500, color='darkviolet',  label=r'$Sat_{+Y}$')
-        ax.quiver(*self.state.position, *(att[2]), length=1500, color='blue',  label=r'$Sat_{+Z}$')
+        # ax.quiver(*self.state.position, *(att[0]), length=1500, color='red', label=r'$Sat_{+X}$')
+        # ax.quiver(*self.state.position, *(att[1]), length=1500, color='darkviolet',  label=r'$Sat_{+Y}$')
+        # ax.quiver(*self.state.position, *(att[2]), length=1500, color='blue',  label=r'$Sat_{+Z}$')
 
-        ax.quiver(*self.state.position, *(-1*att[0]), length=1500, color='red', linestyle='--', label=r'$Sat_{-X}$')
-        ax.quiver(*self.state.position, *(-1*att[1]), length=1500, color='darkviolet', linestyle='--',  label=r'$Sat_{-Y}$')
-        ax.quiver(*self.state.position, *(-1*att[2]), length=1500, color='blue', linestyle='--',  label=r'$Sat_{-Z}$')
+        # ax.quiver(*self.state.position, *(-1*att[0]), length=1500, color='red', linestyle='--', label=r'$Sat_{-X}$')
+        # ax.quiver(*self.state.position, *(-1*att[1]), length=1500, color='darkviolet', linestyle='--',  label=r'$Sat_{-Y}$')
+        # ax.quiver(*self.state.position, *(-1*att[2]), length=1500, color='blue', linestyle='--',  label=r'$Sat_{-Z}$')
 
         # earth
         x, y, z = self.__earth_model()
@@ -497,4 +513,12 @@ class Orbit:
 
 if __name__ == '__main__':
     o = Orbit()
+    a = Material()
+    sat = SatNode(a, a, a)
+ 
+    o.calc_temperature(sat)
+    print(o.heatFlux)
+    
+    o.heatFlux['Q_TOTAL'].plot()
 
+    plt.show()

@@ -1,10 +1,12 @@
+import sys
+
 import numpy as np
 
-import sys
 sys.path.append(sys.path[0] + '/..')
+import json
+
 import constants as c
 
-import json
 
 class Parameter:
 

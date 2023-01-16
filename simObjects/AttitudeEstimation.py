@@ -9,11 +9,6 @@ from Parameter import Parameter, UniformParameter
 import constants as c
 from json import load as jsonload
 
-
-from alive_progress import alive_bar
-import matplotlib.pyplot as plt
-
-
 class Projection:
     def __init__(self, Centroid_Deviation:Parameter=None, * ,
                 centroidFP:str=c.SIMPLE_CENTROID, cameraFP:str=c.ALVIUM_CAM, 

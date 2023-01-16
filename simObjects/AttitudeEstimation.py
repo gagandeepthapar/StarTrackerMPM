@@ -9,8 +9,15 @@ from Parameter import Parameter, UniformParameter
 import constants as c
 from json import load as jsonload
 
+
+from alive_progress import alive_bar
+import matplotlib.pyplot as plt
+
+
 class Projection:
-    def __init__(self, Centroid_Deviation:Parameter=None, * , centroidFP:str=c.SIMPLE_CENTROID, cameraFP:str=c.ALVIUM_CAM, numStars:int=7)->None:
+    def __init__(self, Centroid_Deviation:Parameter=None, * ,
+                centroidFP:str=c.SIMPLE_CENTROID, cameraFP:str=c.ALVIUM_CAM, 
+                numStars:Parameter=Parameter(7, 2, 0, name="NUM_STARS", units="", retVal=lambda x: np.max([1,int(np.round(x))])))->None:
 
         self.dev = self.__set_parameter(Centroid_Deviation, centroidFP)
 
@@ -29,7 +36,7 @@ class Projection:
     
     def randomize(self, num:int=None)->None:
         if num is None:
-            num = self.numStars
+            num = self.numStars.modulate()
         
         self.quat_real:np.ndarray = self.__random_quat()
 
@@ -200,17 +207,20 @@ class QUEST(Projection):
 
         return np.transpose(cofactor)
 
-    def __calc_optimal_lambda(self, a:float, b:float, c:float, d:float, k:float, lam0:float=1.0, eps:float=1e-12):
+    def __calc_optimal_lambda(self, a:float, b:float, c:float, d:float, k:float, lam0:float=1.0, *,eps:float=1e-12, max_iters:int=1000):
 
         e0 = lam0
         e1 = lam0 - self.__optimal_lambda_f(e0, a, b, c, d, k)/self.__optimal_lambda_fp(e0, a, b, c)
         err = np.abs(e1 - e0)
 
         # newton solver
-        while err > eps:
+        i = 0
+        while err > eps and i < max_iters:
             e0 = e1
             e1 = e0 - self.__optimal_lambda_f(e0, a, b, c, d, k)/self.__optimal_lambda_fp(e0, a, b, c)
             err = np.abs(e1 - e0)
+            i += 1
+        
         return e1
     
     def __optimal_lambda_f(self, lam:float, a:float, b:float, c:float, d:float, k:float)->float:
@@ -225,4 +235,3 @@ class QUEST(Projection):
         B = -2*(a + b)*lam
         C = -c
         return A + B + C
-

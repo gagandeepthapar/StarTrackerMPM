@@ -302,25 +302,22 @@ class Orbit:
         Qir = np.empty(iters, dtype=float)
         Qtot = np.empty(iters, dtype=float)
 
-        with alive_bar(iters, title='Calculating Heat Flux') as bar:
-            for i in range(iters):
-                row = self.path.iloc[i]
-                satState = row[['RX', 'RY', 'RZ', 'VX', 'VY', 'VZ']].to_numpy()
-                sunState = self.__solar_position(self.jd.value + row['TIME']/(24*3600))
-                sunUnitState = sunState/np.linalg.norm(sunState)
+        for i in range(iters):
+            row = self.path.iloc[i]
+            satState = row[['RX', 'RY', 'RZ', 'VX', 'VY', 'VZ']].to_numpy()
+            sunState = self.__solar_position(self.jd.value + row['TIME']/(24*3600))
+            sunUnitState = sunState/np.linalg.norm(sunState)
 
-                Qs = satellite.calc_all_Q(satState, sunUnitState)
+            Qs = satellite.calc_all_Q(satState, sunUnitState)
 
-                if not self.__solar_line_of_sight(self.jd.value + row['TIME']/(24*3600), satState[:3]):
-                    Qs[0] = 0
+            if not self.__solar_line_of_sight(self.jd.value + row['TIME']/(24*3600), satState[:3]):
+                Qs[0] = 0
 
-                Qsol[i] = Qs[0]
-                Qalb[i] = Qs[1]
-                Qir[i] = Qs[2]
+            Qsol[i] = Qs[0]
+            Qalb[i] = Qs[1]
+            Qir[i] = Qs[2]
 
-                Qtot[i] = np.sum(Qs)
-
-                bar()
+            Qtot[i] = np.sum(Qs)
 
         self.heatFlux['Q_SOLAR'] = Qsol
         self.heatFlux['Q_ALBEDO'] = Qalb
@@ -537,44 +534,23 @@ def calc_coeffs(data:np.ndarray, coeffs:int=2):
 
 if __name__ == '__main__':
     o = Orbit()
-    o.randomize()
+    al = Material()
+    sat = SatNode(al, al, al)
 
-    a = Material()
-    sat = SatNode(a, a, a)
-    o.calc_temperature(sat)
+    N = 1000
+    semi = np.zeros(N)
+    ecc = np.zeros(N)
+    inc = np.zeros(N)
 
-    fig = plt.figure()
-    ax = fig.add_subplot()
+    with alive_bar(N) as bar:
+        for i in range(N):
+            o.randomize()
+            semi[i] = o.semi.value
+            ecc[i] = o.ecc.value
+            inc[i] = o.inc.value
+            bar()
 
-    ax.scatter(o.heatFlux['TIME'],o.heatFlux['Q_TOTAL'], s = 1)
-    # ax.plot(o.heatFlux['TIME'], o.heatFlux['Q_TOTAL'])
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Heat Flux [W/m2]')
-    ax.set_title('Heat Flux over Time')
-
+    f = {"SEMI": semi, "ECC": ecc, "INC": inc}
+    df = pd.DataFrame(f)
+    df.hist(bins=50)
     plt.show()
-
-    # o.calc_temperature(sat)
-    # qtot = o.heatFlux[['TIME', 'Q_TOTAL']]
-
-    # q = o.heatFlux['Q_TOTAL'].to_numpy()
-    # fa = calc_coeffs(qtot, 5)
-    # print(fa)
-
-    # Q0 = np.mean(q)
-    # TIME = o.heatFlux['TIME']
-
-    # Qc = Q0
-    # for i in range(len(fa)):
-    #     Qc += fa[i] * np.cos((i+1)*TIME)
-
-    # print(Qc)
-
-    # fig = plt.figure()
-    # ax = fig.add_subplot()
-    # ax.plot(Qc)
-    # ax.plot(q)
-
-    # plt.show()
-
-    # print(np.cos(TIME))

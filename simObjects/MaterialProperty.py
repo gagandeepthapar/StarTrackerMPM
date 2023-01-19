@@ -52,10 +52,14 @@ class Material:
         return Parameter(ideal,stddev, mean, name=name, units='-')
     
 class SatNode:
-    def __init__(self, faceA:Material, faceB:Material, faceC:Material)->None:
+    def __init__(self, faceA:Material, faceB:Material, faceC:Material, heatCap:float=961)->None:
         self.faceA = faceA
         self.faceB = faceB
         self.faceC = faceC
+
+        self.heatCap = heatCap
+        self.effArea = self.__calc_eff_area()
+
         return
 
     def randomize(self)->None:
@@ -73,6 +77,12 @@ class SatNode:
         Qir = self.__calc_Q_ir(state[:3])
 
         return np.array([Qsol, Qalb, Qir])
+
+    def __calc_eff_area(self)->float:
+        a = 0
+        for face in [self.faceA, self.faceB, self.faceC]:
+            a += face.area.value * face.alpha.value * 2
+        return a
 
     def __calc_Q_solar(self, solarUnitVec:np.ndarray, attitude:np.ndarray)->float:
 

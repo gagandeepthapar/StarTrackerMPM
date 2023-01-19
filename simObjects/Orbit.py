@@ -15,6 +15,8 @@ from scipy.integrate import solve_ivp
 from scipy.fft import dst, dct
 
 import constants as c
+
+import time
 from MaterialProperty import Material, SatNode
 
 
@@ -293,14 +295,13 @@ class Orbit:
 
         return
 
-    def calc_temperature(self, satellite:SatNode)->float:
+    def calc_temperature(self, satellite:SatNode, initial_temp:float=np.random.normal(20, 5))->None:
         
         iters = len(self.path.index)
 
         Qsol = np.empty(iters, dtype=float)
         Qalb = np.empty(iters, dtype=float)
         Qir = np.empty(iters, dtype=float)
-        Qtot = np.empty(iters, dtype=float)
 
         for i in range(iters):
             row = self.path.iloc[i]
@@ -317,16 +318,42 @@ class Orbit:
             Qalb[i] = Qs[1]
             Qir[i] = Qs[2]
 
-            Qtot[i] = np.sum(Qs)
-
         self.heatFlux['Q_SOLAR'] = Qsol
         self.heatFlux['Q_ALBEDO'] = Qalb
         self.heatFlux['Q_IR'] = Qir
-        self.heatFlux['Q_TOTAL'] = Qtot
-        self.heatFlux['Q_CUMSUM'] = self.heatFlux['Q_TOTAL'].cumsum()
-        self.Q_mean = self.heatFlux['Q_CUMSUM'].iloc[-1]/self.heatFlux['TIME'].iloc[-1]
+        self.heatFlux['Q_TOTAL'] = self.heatFlux[['Q_SOLAR', 'Q_ALBEDO', 'Q_IR']].apply(lambda x: np.sum(x), axis=1)
+
+        tspan = (self.heatFlux['TIME'].iloc[0], self.heatFlux['TIME'].iloc[-1])
+        teval = self.heatFlux['TIME'].to_numpy()
+
+        sol = solve_ivp(self.__sat_temp_diffeq, tspan, [273.15+initial_temp], t_eval=teval, rtol=1e-8, atol=1e-8, args=(satellite.effArea, satellite.heatCap, ))
+        self.heatFlux['SAT_TEMP'] = sol['y'][0]
 
         return
+
+    def __sat_temp_diffeq(self, t:float, state:np.ndarray[float], effArea:float, heatCapacity:float)->float:
+
+        sigma = c.STEFBOLTZ
+        
+        # find nearest neighbors in the set
+        tmin = int(t)
+        tmax = int(t)+1
+
+        if tmin >= len(self.heatFlux.index):
+            tmin = int(self.heatFlux['TIME'].iloc[-2])
+            tmax = tmin + 1
+
+        if tmax >= len(self.heatFlux.index):
+            tmax = tmin
+            tmin = tmin-1
+            
+        Qmin = self.heatFlux['Q_TOTAL'].iloc[tmin]
+        Qmax = self.heatFlux['Q_TOTAL'].iloc[tmax]
+
+        realQ = Qmin + (t - tmin)*(Qmax - Qmin)/(tmax-tmin)
+
+        dt = (-sigma * effArea * state**4 + realQ)/heatCapacity
+        return dt 
 
     def __calc_state(self)->StateVector:
         
@@ -374,7 +401,7 @@ class Orbit:
         
         t_eval = np.linspace(tspan[0], tspan[1], int((tspan[1] - tspan[0])/tstep)+1)
         
-        sol = solve_ivp(self.__two_body, tspan, self.state.state, t_eval=t_eval)
+        sol = solve_ivp(self.__two_body, tspan, self.state.state, t_eval=t_eval, rtol=1e-8, atol=1e-8)
         
         traj = pd.DataFrame({
                                 "TIME": sol['t'],
@@ -515,42 +542,13 @@ class Orbit:
         z = c.EARTHRAD*np.cos(v)
     
         return x, y, z
-
-def calc_coeffs(data:np.ndarray, coeffs:int=2):
-
-    qdata = data['Q_TOTAL']
-    time = data['TIME']
-
-    star = np.mean(qdata)
-    cfs = np.zeros(coeffs)
-
-    for i in range(coeffs):
-        fdata = (qdata - star)*(np.cos((i+1)*time))
-        cfs[i] = np.sum(fdata) * 2 / time.iloc[-1]
-    
-    print(fdata)
-    
-    return cfs
-
+            
 if __name__ == '__main__':
     o = Orbit()
-    al = Material()
-    sat = SatNode(al, al, al)
+    sat = SatNode(Material(), Material(), Material())
 
-    N = 1000
-    semi = np.zeros(N)
-    ecc = np.zeros(N)
-    inc = np.zeros(N)
+    o.randomize()
+    o.calc_temperature(sat)
 
-    with alive_bar(N) as bar:
-        for i in range(N):
-            o.randomize()
-            semi[i] = o.semi.value
-            ecc[i] = o.ecc.value
-            inc[i] = o.inc.value
-            bar()
-
-    f = {"SEMI": semi, "ECC": ecc, "INC": inc}
-    df = pd.DataFrame(f)
-    df.hist(bins=50)
+    o.heatFlux[['SAT_TEMP', 'Q_TOTAL']].plot(subplots=True, layout=(2,1))
     plt.show()

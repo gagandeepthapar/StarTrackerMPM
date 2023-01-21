@@ -114,7 +114,6 @@ class OrbitData:
             tlePD = self.__read_TLE_to_df(tleJSONFP)
         
         self.TLES = tlePD
-        # self.TLES['THETA'] = self.TLES.apply(self.__calc_theta, axis=1)
 
         self.params = self.__create_params()
 
@@ -180,32 +179,6 @@ class OrbitData:
         df = pd.DataFrame(tledict)
 
         return df
-    
-    def __calc_theta(self,x):
-        mean_anom = x['MEAN_ANOMALY']
-        ecc = x['ECC']
-        Me = np.deg2rad(mean_anom)
-        
-        E_0 = Me + ecc
-        if Me < np.pi:
-            E_0 = Me - ecc
-
-        f = lambda E: Me - E + ecc*np.sin(E)
-        fp = lambda E: -1 + ecc*np.sin(E)
-        newt = lambda E: E - f(E)/fp(E)
-
-        E_1 = newt(E_0)
-        err = np.abs(E_1 - E_0)
-
-        while err > 1e-8:
-            E_0 = E_1
-            E_1 = newt(E_0)
-            err = np.abs(E_1 - E_0)
-        
-        TA = 2*c.atand((np.sqrt((1+ecc)/(1-ecc)) * np.tan(E_1/2)))
-        theta = np.mod(TA, 360)
-        # print(theta)
-        return theta
 
     def __create_params(self)->dict:
         param_dict = {}
@@ -409,7 +382,7 @@ class Orbit:
         T = a**(3/2) * (2*np.pi) / np.sqrt(self.mu)
         return T
 
-    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=60)->pd.DataFrame:
+    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=1)->pd.DataFrame:
         if tspan is None:
             tspan = (0, int(self.T)+1)
         
@@ -628,18 +601,33 @@ def eclipse_time(xrow)->float:
 def t(a):
     return 2*np.pi*a/np.sqrt(c.EARTHMU/a)
 
-
 if __name__ == '__main__':
     N = 100_000    
     o = Orbit()
-    sat = SatNode(Material(), Material(), Material())
 
-    o.randomize()
-    o.gen_heat_flux(sat)
-    o.calc_temperature(sat)
+    df = o.path
+    df['JD'] = np.random.uniform(c.J2000, c.J2000+c.JYEAR, len(df.index))
+    print(df)
 
-    o.heatFlux[['Q_TOTAL', 'SAT_TEMP']].plot(subplots=True, layout=(2,1))
-    plt.show()
+    start = time.perf_counter()
+
+    # df['SUN_X'], df['SUN_Y'], df['SUN_Z'] = spos(df['JD'])
+    df['SAT_TEMP'] = np.random.normal(20, 5, len(df.index))
+
+
+    end = time.perf_counter() - start
+    
+    print(df)
+    print('\nTIME: {}\n'.format(end))
+    # sat = SatNode(Material(), Material(), Material())
+
+    # o.gen_heat_flux(sat)
+    # o.randomize()
+    # o.gen_heat_flux(sat)
+    # o.calc_temperature(sat)
+
+    # o.heatFlux[['Q_TOTAL', 'SAT_TEMP']].plot(subplots=True, layout=(2,1))
+    # plt.show()
 
     # print(t(6878))
 

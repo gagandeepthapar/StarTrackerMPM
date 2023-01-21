@@ -1,11 +1,8 @@
 import numpy as np
 
-try:
-    from StarTrackerMPM import constants as c
-except:
-    import sys
-    sys.path.append(sys.path[0] + '/..')
-    import constants as c
+import sys
+sys.path.append(sys.path[0] + '/..')
+import constants as c
 
 import json
 

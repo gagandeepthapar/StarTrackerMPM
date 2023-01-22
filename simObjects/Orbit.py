@@ -734,55 +734,84 @@ def test_temp(row):
 
     return temps
 if __name__ == '__main__':
-    N = 100_000    
-    o = Orbit()
-    helpers = pd.DataFrame()
-    m = Material()
-    F = 0.4
-    gamma = 0.273
+    # N = 10_000    
+    # o = Orbit()
+    # helpers = pd.DataFrame()
+    # m = Material()
+    # F = 0.4
+    # gamma = 0.273
 
-    df:pd.DataFrame = o.randomize(num=N)
+    # df:pd.DataFrame = o.randomize(num=N)
     
+    # start = time.perf_counter()
+    # df['PERIOD'] = df['SEMI']**1.5 * 2*np.pi /np.sqrt(c.EARTHMU)
+
+    # df['INITIAL_TEMP'] = np.random.normal(20, 5, len(df.index))
+    # df['ALPHA'] = np.random.normal(0.5, 0.1, len(df.index))
+    # df['EMI'] = np.random.normal(0.5, 0.1, len(df.index))
+    # df['AREA'] = 6*np.random.normal(0.01, 0.0001, len(df.index))
+
+    # df['Q_ALB'] = df['ALPHA']*df['AREA']*gamma*c.EARTHFLUX*F
+    # helpers['POS'] = df['SEMI'] * (1-df['ECC']**2)/(1+df['ECC']*np.cos(np.deg2rad(df['THETA'])))
+    # helpers['Q_H'] = helpers['POS']/c.EARTHRAD
+    # helpers['Fa'] = 1/(helpers['Q_H']**2)
+    # helpers['Fb'] = -np.sqrt(helpers['Q_H']**2 - 1)/(np.pi*helpers['Q_H']**2) + 1/np.pi * np.arctan(1/(np.sqrt(helpers['Q_H']**2-1)))
+    # df['Q_IR'] = (1/3*df['EMI']*df['AREA']*c.EARTHFLUX*helpers['Fa']) \
+    #             + (2/3*df['EMI']*df['AREA']*c.EARTHFLUX*helpers['Fb'])
+
+    # helpers['SVECX'], helpers['SVECY'], helpers['SVECZ'] = spos(df['JULIAN_DATE'].values)
+    # helpers['RA'], helpers['DEC'] = vec2radec([helpers['SVECX'], helpers['SVECY'], helpers['SVECZ']])
+    
+    # helpers['BETA'] = beta_ang([helpers['RA'], helpers['DEC']], df['RAAN'], df['INC'])
+    
+    # helpers['SEMI'] = df['SEMI']
+    # helpers['T'] = df['PERIOD']
+    # helpers['EC_TIME'] = 0
+    # helpers['EC_FLAG'] = np.abs(np.sin(helpers['BETA'])) < c.EARTHRAD/helpers['POS']
+    # print('pre')
+    # helpers.loc[helpers['EC_FLAG'], 'EC_TIME'] = eclipse_time(helpers['BETA'], helpers['T'], helpers['POS'])
+    # print('post')
+    # df['EC_TIME'] = helpers['EC_TIME']
+    # df['EC_FRAC'] = df['EC_TIME']/df['PERIOD']
+    # df['Q_SOL'] = df['ALPHA'] * 0.4*df['AREA'] * c.SOLARFLUX * (1-df['EC_FRAC'])
+    # df['Q_TOT'] = df['Q_ALB'] + df['Q_IR'] + df['Q_SOL']
+
+    # df = df[df['SEMI']* (1-df['ECC']) > c.EARTHRAD]
+    # x = df.apply(test_temp, axis=1)
+    # df['MEAN_TEMP'] = x.apply(np.mean)
+    # df['TEMP_STD'] = x.apply(np.std)
+
+    # end = time.perf_counter() - start
+    # print(x)
+
+    # print(helpers)
+    # print(df)
+    # print('\nTIME: {}\n'.format(end))
+
+    # print('MEAN:')
+    # print(df.mean())
+    # print('\nSTD:')
+    # print(df.std())
+    # print('\nSKEW:')
+    # print(df.skew())
+
+    # df.to_pickle('TEMPERATURE_DATA.pkl')
+
+    # df[['MEAN_TEMP', 'TEMP_STD']].hist(bins=100)
+    # plt.show()
+
     start = time.perf_counter()
-    df['PERIOD'] = df['SEMI']**1.5 * 2*np.pi /np.sqrt(c.EARTHMU)
-
-    df['INITIAL_TEMP'] = np.random.normal(20, 5, len(df.index))
-    df['ALPHA'] = np.random.normal(0.5, 0.1, len(df.index))
-    df['EMI'] = np.random.normal(0.5, 0.1, len(df.index))
-    df['AREA'] = 6*np.random.normal(0.01, 0.0001, len(df.index))
-
-    df['Q_ALB'] = df['ALPHA']*df['AREA']*gamma*c.EARTHFLUX*F
-    helpers['POS'] = df['SEMI'] * (1-df['ECC']**2)/(1+df['ECC']*np.cos(np.deg2rad(df['THETA'])))
-    helpers['Q_H'] = helpers['POS']/c.EARTHRAD
-    helpers['Fa'] = 1/(helpers['Q_H']**2)
-    helpers['Fb'] = -np.sqrt(helpers['Q_H']**2 - 1)/(np.pi*helpers['Q_H']**2) + 1/np.pi * np.arctan(1/(np.sqrt(helpers['Q_H']**2-1)))
-    df['Q_IR'] = (1/3*df['EMI']*df['AREA']*c.EARTHFLUX*helpers['Fa']) \
-                + (2/3*df['EMI']*df['AREA']*c.EARTHFLUX*helpers['Fb'])
-
-    helpers['SVECX'], helpers['SVECY'], helpers['SVECZ'] = spos(df['JULIAN_DATE'].values)
-    helpers['RA'], helpers['DEC'] = vec2radec([helpers['SVECX'], helpers['SVECY'], helpers['SVECZ']])
-    
-    helpers['BETA'] = beta_ang([helpers['RA'], helpers['DEC']], df['RAAN'], df['INC'])
-    
-    helpers['SEMI'] = df['SEMI']
-    helpers['T'] = df['PERIOD']
-    helpers['EC_TIME'] = 0
-    helpers['EC_FLAG'] = np.abs(np.sin(helpers['BETA'])) < c.EARTHRAD/helpers['POS']
-    print('pre')
-    helpers.loc[helpers['EC_FLAG'], 'EC_TIME'] = eclipse_time(helpers['BETA'], helpers['T'], helpers['POS'])
-    print('post')
-    df['EC_TIME'] = helpers['EC_TIME']
-    df['EC_FRAC'] = df['EC_TIME']/df['PERIOD']
-    df['Q_SOL'] = df['ALPHA'] * 0.4*df['AREA'] * c.SOLARFLUX * (1-df['EC_FRAC'])
-    df['Q_TOT'] = df['Q_ALB'] + df['Q_IR'] + df['Q_SOL']
-    
-    end = time.perf_counter() - start
-
-    print(helpers)
+    df = pd.read_pickle('TEMPERATURE_DATA.pkl')
+    print(time.perf_counter() - start)
     print(df)
-    print('\nTIME: {}\n'.format(end))
 
-    print('MEAN:')
+    df['MEAN_LOG_TEMP'] = df['MEAN_TEMP']**(1/3)
+    df['TEMP_LOG_STD'] = np.sqrt(df['TEMP_STD'])
+
     print(df.mean())
-    print('\nSTD:')
     print(df.std())
+    print(df.skew())
+
+    df[['MEAN_TEMP', 'MEAN_LOG_TEMP']].hist(bins=100)
+    df[['TEMP_STD', 'TEMP_LOG_STD']].hist(bins=100)
+    plt.show()

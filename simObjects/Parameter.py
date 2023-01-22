@@ -1,11 +1,8 @@
 import numpy as np
 
-try:
-    from StarTrackerMPM import constants as c
-except:
-    import sys
-    sys.path.append(sys.path[0] + '/..')
-    import constants as c
+import sys
+sys.path.append(sys.path[0] + '/..')
+import constants as c
 
 import json
 
@@ -36,7 +33,7 @@ class Parameter:
         return
     
     def __repr__(self)->str:
-        pname = f'{self._color}{self.name}: {np.round(self.value,3)}{self.units} [{self.retVal(self.ideal+self._err_mean)}({c.MU}) +/- {self.retVal(self._err_stddev)}(3{c.SIGMA})]{c.DEFAULT}'
+        pname = f'{self._color}{self.name}: {np.round(self.value,3)}{self.units} [{self.retVal(self.ideal+self._err_mean)}({c.MU}) +/- {self.retVal(self._err_stddev)}(1{c.SIGMA})]{c.DEFAULT}'
         return pname 
 
     def modulate(self)->float:

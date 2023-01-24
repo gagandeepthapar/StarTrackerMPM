@@ -729,23 +729,25 @@ def test_temp(row):
         
         return (-1*c.STEFBOLTZ*row['AREA']*row['EMI']*state**4 + Q)/961
 
-    sol = solve_ivp(__temp_diffeq, (0, T), [273.15+row['INITIAL_TEMP']], t_eval=np.linspace(0, T, 100), rtol=1e-8, atol=1e-8)
+    sol = solve_ivp(__temp_diffeq, (0, T), [273.15+row['INITIAL_TEMP']], t_eval=np.linspace(0, T, 100), rtol=1e-5, atol=1e-5)
     temps = sol['y'][0] 
 
     return temps
+
+
 if __name__ == '__main__':
-    N = 1_000    
     o = Orbit()
     helpers = pd.DataFrame()
     F = 0.4
     gamma = 0.273
+    N = 1_000
 
     df:pd.DataFrame = o.randomize(num=N)
     
     start = time.perf_counter()
     df['PERIOD'] = df['SEMI']**1.5 * 2*np.pi /np.sqrt(c.EARTHMU)
 
-    df['INITIAL_TEMP'] = np.random.normal(40, 5, len(df.index))
+    df['INITIAL_TEMP'] = np.random.normal(20, 5, len(df.index))
     df['ALPHA'] = np.random.normal(0.5, 0.1, len(df.index))
     df['EMI'] = np.random.normal(0.5, 0.1, len(df.index))
     df['AREA'] = 6*np.random.normal(0.01, 0.0001, len(df.index))
@@ -776,16 +778,20 @@ if __name__ == '__main__':
     df['Q_TOT'] = df['Q_ALB'] + df['Q_IR'] + df['Q_SOL']
 
     df = df[df['SEMI']* (1-df['ECC']) > c.EARTHRAD]
-    x = df.apply(test_temp, axis=1)
+    x = df.apply(test_temp, axis=1) - 273.15
     df['MEAN_TEMP'] = x.apply(np.mean)
     df['TEMP_STD'] = x.apply(np.std)
 
     end = time.perf_counter() - start
-    print(x)
 
     print(helpers)
     print(df)
     print('\nTIME: {}\n'.format(end))
+    print(df.mean())
+    print(df.std())
+    print(df.skew())
+    
+    print('no ec: {}'.format(len(df[df['EC_TIME'] == 0].index)))
 
     # print('MEAN:')
     # print(df.mean())
@@ -796,20 +802,20 @@ if __name__ == '__main__':
 
     # df.to_pickle('TEMPERATURE_DATA.pkl')
 
-    # df[['MEAN_TEMP', 'TEMP_STD']].hist(bins=100)
+    df[['MEAN_TEMP', 'TEMP_STD']].hist(bins=100)
 
     # start = time.perf_counter()
     # df = pd.read_pickle('TEMPERATURE_DATA.pkl')
     # print(time.perf_counter() - start)
     # print(df)
 
-    df['MEAN_LOG_TEMP'] = np.log(df['MEAN_TEMP'])
-    df['TEMP_LOG_STD'] = np.log(df['TEMP_STD'])
+    # df['MEAN_LOG_TEMP'] = np.log(df['MEAN_TEMP'])
+    # df['TEMP_LOG_STD'] = np.log(df['TEMP_STD'])
 
-    print(df.mean())
-    print(df.std())
-    print(df.skew())
+    # print(df.mean())
+    # print(df.std())
+    # print(df.skew())
 
-    df[['MEAN_TEMP', 'MEAN_LOG_TEMP']].hist(bins=100)
-    df[['TEMP_STD', 'TEMP_LOG_STD']].hist(bins=100)
-    plt.show()
+    # df[['MEAN_TEMP', 'MEAN_LOG_TEMP']].hist(bins=100)
+    # df[['TEMP_STD', 'TEMP_LOG_STD']].hist(bins=100)
+    # plt.show()

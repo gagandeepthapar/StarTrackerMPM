@@ -116,7 +116,9 @@ class OrbitData:
         self.TLES = tlePD
 
         self.params:dict = self.__create_params()
-        self.params["TEMP"] = Parameter(20, 5, 0, name="TEMP", units='C')
+        self.params['INITIAL_TEMP'] = Parameter(20, 5, 0, name='INITIAL_TEMP', units='C')
+        
+        self.all_params:list = [self.params[param].name for param in self.params]
 
         return
     
@@ -406,6 +408,149 @@ class OrbitData:
 
         return theta <= (thetaA + thetaB)
 
+class TempData:
+
+    def __init__(self, Absorptivity:Parameter=None, Emissivity:Parameter=None, Area:Parameter=None, *, temp_pkl:str=c.TEMP_DATA, orbitData = OrbitData())->None:
+
+        self.orbitdata = orbitData
+        self.abs = Absorptivity
+        self.emi = Emissivity
+        self.area = Area
+
+        self.temp_data = self.recalc_temp()
+
+        return
+
+    def __repr__(self)->str:
+        return 'Heat Data Class:\n{}'.format(self.temp_data)
+
+    def __set_parameter():
+        # area_param:Parameter=Parameter(c.C1U, 3*c.C1U*1e-2, 0, name='1U', units='m')
+        return 
+
+    def recalc_temp(self, mod_params:list=None, num_runs:int=10_000)->pd.DataFrame:
+
+        if mod_params is None:
+            mod_params = self.orbitdata.all_params
+
+        temp_df = self.__modulate_params(mod_params, num_runs)
+        
+        area = np.zeros(num_runs)
+        alpha = np.zeros(num_runs)
+        emis = np.zeros(num_runs)
+        for i in range(num_runs):
+            area[i] = self.area.modulate()
+            alpha[i] = self.abs.modulate()
+            emis[i] = self.emi.modulate()
+
+
+        temp_df['AREA'] = area
+        temp_df['ALPHA'] = alpha
+        temp_df['EMI'] = emis
+
+        temp_df['Q_ALB'] = temp_df['ALPHA']*temp_df['AREA']*c.TEMP_GAMMA*c.EARTHFLUX*temp_df['VF']
+        # df['POS'] = df['SEMI'] * (1-df['ECC']**2)/(1+df['ECC']*np.cos(np.deg2rad(df['THETA'])))
+        # df['Q_H'] = df['POS']/c.EARTHRAD
+        # df['Fa'] = 1/(df['Q_H']**2)
+        # df['Fb'] = -np.sqrt(df['Q_H']**2 - 1)/(np.pi*df['Q_H']**2) + 1/np.pi * np.arctan(1/(np.sqrt(df['Q_H']**2-1)))
+        # df['Q_IR'] = (1/3*df['EMI']*df['AREA']*c.EARTHFLUX*df['Fa']) \
+        #             + (2/3*df['EMI']*df['AREA']*c.EARTHFLUX*df['Fb'])
+
+        # df['SVECX'], df['SVECY'], df['SVECZ'] = spos(df['JULIAN_DATE'].values)
+        # df['RA'], df['DEC'] = vec2radec([df['SVECX'], df['SVECY'], df['SVECZ']])
+        
+        # df['BETA'] = beta_ang([df['RA'], df['DEC']], df['RAAN'], df['INC'])
+        
+        # df['SEMI'] = df['SEMI']
+        # df['T'] = df['PERIOD']
+        # df['EC_TIME'] = 0
+        # df['EC_FLAG'] = np.abs(np.sin(df['BETA'])) < c.EARTHRAD/df['POS']
+        # print('pre')
+        # df.loc[df['EC_FLAG'], 'EC_TIME'] = eclipse_time(df['BETA'], df['T'], df['POS'])
+        # print('post')
+        # df['EC_TIME'] = df['EC_TIME']
+        # df['EC_FRAC'] = df['EC_TIME']/df['PERIOD']
+        # df['Q_SOL'] = df['ALPHA'] * 0.4*df['AREA'] * c.SOLARFLUX * (1-df['EC_FRAC'])
+        # df['Q_TOT'] = df['Q_ALB'] + df['Q_IR'] + df['Q_SOL']
+
+        # df = df[df['SEMI']* (1-df['ECC']) > c.EARTHRAD]
+        # x = df.apply(self.__calc_temp, axis=1) - 273.15
+        # df['MEAN_TEMP'] = x.apply(np.mean)
+        # df['TEMP_STD'] = x.apply(np.std)
+
+
+        return temp_df
+
+    def __modulate_params(self, params:list, num_runs:int)->pd.DataFrame:
+
+        df = pd.DataFrame()
+        
+        for param in self.orbitdata.all_params:
+            data = np.zeros(num_runs)
+            for i in range(num_runs):
+                if param in params:
+                    data[i] = self.orbitdata.params[param].modulate()
+                else:
+                    data[i] = self.orbitdata.params[param].ideal
+            
+            df[param] = data
+        
+        return df
+
+    def __calc_Q_alb(self)->None:
+        R = 0.8
+        M = 0.5
+        S = 0.15
+        cst = 1/(S*np.sqrt(2*np.pi)) 
+
+        to_norm = lambda x: np.exp(-0.5*((x - M)/S)**2) * cst
+        to_vf = lambda x: R - np.min([R, x])
+
+
+        return
+
+
+    def __calc_Q_ir(self)->None:
+
+        return
+    
+    def __calc_eclipse_params(self)->None:
+
+        return
+
+    def __calc_Q_sol(self)->None:
+
+        return
+    
+    def __calc_temp(self, row:pd.Series)->pd.Series:
+
+        T = row['PERIOD']
+        eT = row['EC_TIME']
+
+        tA = (T-eT)/2
+        tB = tA + eT
+
+        def __temp_diffeq(t:float, state:float, heat_capacity:float=961)->float:
+
+            if t <= tA:
+                Q = row['Q_TOT']
+            
+            elif t <= tB:
+                Q = row['Q_IR'] + row['Q_ALB']
+            
+            else:
+                Q = row['Q_TOT']
+            
+            return (-1*c.STEFBOLTZ*row['AREA']*row['EMI']*state**4 + Q)/heat_capacity
+
+        sol = solve_ivp(__temp_diffeq, (0, T), [273.15+row['INITIAL_TEMP']], t_eval=np.linspace(0, T, 100), rtol=1e-5, atol=1e-5)
+        temps = np.array(sol['y'][0])
+
+        row['MEAN_TEMP'] = np.mean(temps)
+        row['TEMP_STD']  = np.std(temps)
+
+        return row
+
 class Orbit:
 
     mu:int = c.EARTHMU
@@ -424,7 +569,7 @@ class Orbit:
         self.inc:Parameter = self.__set_parameter(incParam, "INC")
         self.ecc:Parameter = self.__set_parameter(eccParam, "ECC")
         self.semi:Parameter = self.__set_parameter(semiParam, "SEMI")
-        self.temp:Parameter = self.__set_parameter(semiParam, "TEMP")
+        # self.temp:Parameter = self.__set_parameter(semiParam, "TEMP")
 
         self.arg = UniformParameter(0, 360, 'ARG', c.DEG)
         self.raan = UniformParameter(0, 360, 'RAAN', c.DEG)
@@ -602,7 +747,6 @@ class Orbit:
 
 """ """
 
-# def calc_state(inc, ecc, theta, arg, raan, semi, mu:int=c.EARTHMU)->StateVector:
 def calc_state(row, mu:int=c.EARTHMU):
     ecc = row['ECC']
     inc = row['INC']
@@ -710,6 +854,8 @@ def eclipse_time(beta, t, pos)->float:
 
 def test_temp(row):
 
+    # print(type(row))
+
     T = row['PERIOD']
     eT = row['EC_TIME']
 
@@ -732,90 +878,98 @@ def test_temp(row):
     sol = solve_ivp(__temp_diffeq, (0, T), [273.15+row['INITIAL_TEMP']], t_eval=np.linspace(0, T, 100), rtol=1e-5, atol=1e-5)
     temps = sol['y'][0] 
 
-    return temps
+    row['MT'] = np.mean(temps)
+    row['ST'] = np.std(temps)
 
+    return row
 
 if __name__ == '__main__':
-    o = Orbit()
-    helpers = pd.DataFrame()
-    F = 0.4
-    gamma = 0.273
-    N = 1_000
 
-    df:pd.DataFrame = o.randomize(num=N)
+
+    tc = TempData()
+    print(tc.orbitdata.all_params)
+    print(tc.temp_data)
+    # tc.recalc_temp(mod_params=[tc.orbitdata.params['ECC']])
+
+    # od = OrbitData()
+    # l = []
+    # for param in od.params:
+    #     l.append(od.params[param])
+
+    # print(l)
+
+    # N = 1_000
+    # M = 0.5
+    # S = 0.15
+    # R = 0.8
+
+    # r = np.random.uniform(0, 1, N)
+    # cst = 1/(S*np.sqrt(2*np.pi))
+    # # nd = np.exp(-0.5*((r - M)/S)**2) * cst
+    # # ind = R - np.array([np.min([R,x]) for x in nd])
+
+    # to_norm = lambda x: np.exp(-0.5*((x - M)/S)**2) * cst
+    # to_vf = lambda x: R - np.min([R, x])
+
+    # o = Orbit()
+
+    # df:pd.DataFrame = o.randomize(num=N)
     
-    start = time.perf_counter()
-    df['PERIOD'] = df['SEMI']**1.5 * 2*np.pi /np.sqrt(c.EARTHMU)
-
-    df['INITIAL_TEMP'] = np.random.normal(20, 5, len(df.index))
-    df['ALPHA'] = np.random.normal(0.5, 0.1, len(df.index))
-    df['EMI'] = np.random.normal(0.5, 0.1, len(df.index))
-    df['AREA'] = 6*np.random.normal(0.01, 0.0001, len(df.index))
-
-    df['Q_ALB'] = df['ALPHA']*df['AREA']*gamma*c.EARTHFLUX*F
-    helpers['POS'] = df['SEMI'] * (1-df['ECC']**2)/(1+df['ECC']*np.cos(np.deg2rad(df['THETA'])))
-    helpers['Q_H'] = helpers['POS']/c.EARTHRAD
-    helpers['Fa'] = 1/(helpers['Q_H']**2)
-    helpers['Fb'] = -np.sqrt(helpers['Q_H']**2 - 1)/(np.pi*helpers['Q_H']**2) + 1/np.pi * np.arctan(1/(np.sqrt(helpers['Q_H']**2-1)))
-    df['Q_IR'] = (1/3*df['EMI']*df['AREA']*c.EARTHFLUX*helpers['Fa']) \
-                + (2/3*df['EMI']*df['AREA']*c.EARTHFLUX*helpers['Fb'])
-
-    helpers['SVECX'], helpers['SVECY'], helpers['SVECZ'] = spos(df['JULIAN_DATE'].values)
-    helpers['RA'], helpers['DEC'] = vec2radec([helpers['SVECX'], helpers['SVECY'], helpers['SVECZ']])
+    # df['PERIOD'] = df['SEMI']**1.5 * 2*np.pi /np.sqrt(c.EARTHMU)
+    # df['INITIAL_TEMP'] = np.random.normal(20, 5, len(df.index))
+    # df['ALPHA'] = np.random.normal(0.5, 0.1, len(df.index))
+    # df['EMI'] = np.random.normal(0.5, 0.1, len(df.index))
+    # df['AREA'] = 6*np.random.normal(0.01, 0.0001, len(df.index))
+    # f = to_norm(np.random.uniform(0, 1, len(df.index)))
+    # vf = np.array([to_vf(x) for x in f])
+    # df['VF'] = vf 
+    # df['Q_ALB'] = df['ALPHA']*df['AREA']*c.TEMP_GAMMA*c.EARTHFLUX*df['VF']
+    # df['POS'] = df['SEMI'] * (1-df['ECC']**2)/(1+df['ECC']*np.cos(np.deg2rad(df['THETA'])))
+    # df['Q_H'] = df['POS']/c.EARTHRAD
+    # df['Fa'] = 1/(df['Q_H']**2)
+    # df['Fb'] = -np.sqrt(df['Q_H']**2 - 1)/(np.pi*df['Q_H']**2) + 1/np.pi * np.arctan(1/(np.sqrt(df['Q_H']**2-1)))
+    # df['Q_IR'] = (1/3*df['EMI']*df['AREA']*c.EARTHFLUX*df['Fa']) \
+    #             + (2/3*df['EMI']*df['AREA']*c.EARTHFLUX*df['Fb'])
+    # df['SVECX'], df['SVECY'], df['SVECZ'] = spos(df['JULIAN_DATE'].values)
+    # df['RA'], df['DEC'] = vec2radec([df['SVECX'], df['SVECY'], df['SVECZ']])
+    # df['BETA'] = beta_ang([df['RA'], df['DEC']], df['RAAN'], df['INC'])
+    # df['SEMI'] = df['SEMI']
+    # df['T'] = df['PERIOD']
+    # df['EC_TIME'] = 0
+    # df['EC_FLAG'] = np.abs(np.sin(df['BETA'])) < c.EARTHRAD/df['POS']
     
-    helpers['BETA'] = beta_ang([helpers['RA'], helpers['DEC']], df['RAAN'], df['INC'])
+    # # broken vvv
+    # df.loc[df['EC_FLAG'], 'EC_TIME'] = eclipse_time(df['BETA'], df['T'], df['POS'])
     
-    helpers['SEMI'] = df['SEMI']
-    helpers['T'] = df['PERIOD']
-    helpers['EC_TIME'] = 0
-    helpers['EC_FLAG'] = np.abs(np.sin(helpers['BETA'])) < c.EARTHRAD/helpers['POS']
-    print('pre')
-    helpers.loc[helpers['EC_FLAG'], 'EC_TIME'] = eclipse_time(helpers['BETA'], helpers['T'], helpers['POS'])
-    print('post')
-    df['EC_TIME'] = helpers['EC_TIME']
-    df['EC_FRAC'] = df['EC_TIME']/df['PERIOD']
-    df['Q_SOL'] = df['ALPHA'] * 0.4*df['AREA'] * c.SOLARFLUX * (1-df['EC_FRAC'])
-    df['Q_TOT'] = df['Q_ALB'] + df['Q_IR'] + df['Q_SOL']
-
-    df = df[df['SEMI']* (1-df['ECC']) > c.EARTHRAD]
-    x = df.apply(test_temp, axis=1) - 273.15
-    df['MEAN_TEMP'] = x.apply(np.mean)
-    df['TEMP_STD'] = x.apply(np.std)
-
-    end = time.perf_counter() - start
-
-    print(helpers)
-    print(df)
-    print('\nTIME: {}\n'.format(end))
-    print(df.mean())
-    print(df.std())
-    print(df.skew())
-    
-    print('no ec: {}'.format(len(df[df['EC_TIME'] == 0].index)))
-
-    # print('MEAN:')
-    # print(df.mean())
-    # print('\nSTD:')
-    # print(df.std())
-    # print('\nSKEW:')
-    # print(df.skew())
-
-    # df.to_pickle('TEMPERATURE_DATA.pkl')
-
-    df[['MEAN_TEMP', 'TEMP_STD']].hist(bins=100)
-
-    # start = time.perf_counter()
-    # df = pd.read_pickle('TEMPERATURE_DATA.pkl')
-    # print(time.perf_counter() - start)
+    # df['EC_TIME'] = df['EC_TIME']
+    # df['EC_FRAC'] = df['EC_TIME']/df['PERIOD']
+    # df['Q_SOL'] = df['ALPHA'] * 0.4*df['AREA'] * c.SOLARFLUX * (1-df['EC_FRAC'])
+    # df['Q_TOT'] = df['Q_ALB'] + df['Q_IR'] + df['Q_SOL']
+    # df = df[df['SEMI']* (1-df['ECC']) > c.EARTHRAD]
+    # df = df.apply(test_temp, axis=1) - 273.15
     # print(df)
+    # print(df.columns)
 
-    # df['MEAN_LOG_TEMP'] = np.log(df['MEAN_TEMP'])
-    # df['TEMP_LOG_STD'] = np.log(df['TEMP_STD'])
+    # # df['MEAN_TEMP'] = x.apply(np.mean)
+    # # df['TEMP_STD'] = x.apply(np.std)
 
-    # print(df.mean())
-    # print(df.std())
-    # print(df.skew())
+    # # end = time.perf_counter() - start
 
-    # df[['MEAN_TEMP', 'MEAN_LOG_TEMP']].hist(bins=100)
-    # df[['TEMP_STD', 'TEMP_LOG_STD']].hist(bins=100)
-    # plt.show()
+    # # print(df)
+    # # print(df)
+    # # print('\nTIME: {}\n'.format(end))
+
+    # # print(df.mean())
+    # # print(df.std())
+    # # print(df.skew())
+    
+    # # print('no ec: {}'.format(len(df[df['EC_TIME'] == 0].index)))
+
+
+    # # fig = plt.figure()
+    # # ax = fig.add_subplot(211)
+    # # ax2 = fig.add_subplot(212)
+
+    # # ax.hist(df['MEAN_TEMP'], bins=100)
+    # # ax2.hist(df['TEMP_STD'], bins=100)
+    # # plt.show()

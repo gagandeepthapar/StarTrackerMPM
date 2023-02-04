@@ -23,6 +23,7 @@ ACTIVESATS = os.path.join(curFile, 'utils/', 'celestrakActiveSats.json')
 """ SATELLITE CONFIGS """
 CUBESAT1U = os.path.join(curFile, 'utils/', 'cubesat1UMaterial.json')
 CUBESAT3U = os.path.join(curFile, 'utils/', 'cubesat3UMaterial.json')
+TEMP_DATA = os.path.join(curFile, 'utils/', 'TEMPERATURE_DATA.pkl')
 
 """ CATALOG INFO """
 BSC5PKL = os.path.join(curFile, 'utils/', 'BSC5PKL.pkl')
@@ -81,3 +82,4 @@ JYEAR = 365.25
 STEFBOLTZ = 5.670367e-8
 C1U = 0.01
 C3U = 0.03
+TEMP_GAMMA = 0.273 

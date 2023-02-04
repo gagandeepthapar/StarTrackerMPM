@@ -15,8 +15,8 @@ class Parameter:
         self.ideal = ideal
         self.name = name
 
-        self._err_mean = mean
-        self._err_stddev = stddev
+        self.__err_mean = mean
+        self.__err_stddev = stddev
         self._color = color
         self.range = self._err_mean + (3*self._err_stddev)
         self.minRange = self.ideal - self.range
@@ -35,12 +35,13 @@ class Parameter:
         return
     
     def __repr__(self)->str:
-        pname = f'{self._color}{self.name}: {np.round(self.value,3)}{self.units} [{self.retVal(self.ideal+self._err_mean)}({c.MU}) +/- {self.retVal(self._err_stddev)}(3{c.SIGMA})]{c.DEFAULT}'
+        pname = f'{self._color}{self.name}: {np.round(self.value,3)}{self.units} [{self.retVal(self.ideal+self.__err_mean)}({c.MU}) +/- {self.retVal(self.__err_stddev)}(3{c.SIGMA})]{c.DEFAULT}'
         return pname 
 
-    def modulate(self)->float:
-        self.value = self.retVal(self.ideal + (np.random.normal(loc=self._err_mean, scale=self._err_stddev)))
-        return self.value
+    def modulate(self, num:int=1)->float:
+        values = np.apply_along_axis(self.retVal, 0, np.random.normal(loc=self.__err_mean, scale=self.__err_stddev, size=num)) 
+        self.value = np.mean(values)
+        return values
     
     def reset(self)->float:
         self.value = self.ideal

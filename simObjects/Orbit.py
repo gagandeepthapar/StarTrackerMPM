@@ -12,8 +12,11 @@ from alive_progress import alive_bar
 from MaterialProperty import Material
 from Parameter import Parameter, UniformParameter
 from scipy.integrate import solve_ivp
+from scipy.fft import dst, dct
 
 import constants as c
+
+import time
 from MaterialProperty import Material, SatNode
 
 
@@ -286,42 +289,85 @@ class Orbit:
 
         self.state = self.__calc_state()
         self.path = self.__propagate_orbit()
+
+        self.heatFlux = pd.DataFrame()
         self.heatFlux['TIME'] = self.path['TIME']
 
         return
 
-    def calc_temperature(self, satellite:SatNode)->float:
-        
+    def gen_heat_flux(self, satellite:SatNode)->None:
         iters = len(self.path.index)
 
         Qsol = np.empty(iters, dtype=float)
         Qalb = np.empty(iters, dtype=float)
         Qir = np.empty(iters, dtype=float)
+        Qtot = np.empty(iters, dtype=float)
 
-        with alive_bar(iters, title='Calculating Heat Flux') as bar:
-            for i in range(iters):
-                row = self.path.iloc[i]
-                satState = row[['RX', 'RY', 'RZ', 'VX', 'VY', 'VZ']].to_numpy()
-                sunState = self.__solar_position(self.jd.value + row['TIME']/(24*3600))
-                sunUnitState = sunState/np.linalg.norm(sunState)
+        ti = time.perf_counter()
+        for i in range(iters):
+            row = self.path.iloc[i]
+            satState = row[['RX', 'RY', 'RZ', 'VX', 'VY', 'VZ']].to_numpy()
+            
+            sunState = self.__solar_position(self.jd.value + row['TIME']/(24*3600))
 
-                Qs = satellite.calc_all_Q(satState, sunUnitState)
+            sunUnitState = sunState/np.linalg.norm(sunState)
 
-                if not self.__solar_line_of_sight(self.jd.value + row['TIME']/(24*3600), satState[:3]):
-                    Qs[0] = 0
+            Qs = satellite.calc_all_Q(satState, sunUnitState)
 
-                Qsol[i] = Qs[0]
-                Qalb[i] = Qs[1]
-                Qir[i] = Qs[2]
+            if not self.__solar_line_of_sight(self.jd.value + row['TIME']/(24*3600), satState[:3]):
+                Qs[0] = 0
 
-                bar()
+            Qsol[i] = Qs[0]
+            Qalb[i] = Qs[1]
+            Qir[i] = Qs[2]
+            Qtot[i] = np.sum(Qs)
+        
+        print('loop gen: {}'.format(time.perf_counter() - ti))
 
+        s = time.perf_counter()
         self.heatFlux['Q_SOLAR'] = Qsol
         self.heatFlux['Q_ALBEDO'] = Qalb
         self.heatFlux['Q_IR'] = Qir
-        self.heatFlux['Q_TOTAL'] = self.heatFlux[['Q_SOLAR', 'Q_ALBEDO', 'Q_IR']].apply(lambda x: sum(x), axis=1)
+        self.heatFlux['Q_TOTAL'] = Qtot
+        print('calc gen: {}'.format(time.perf_counter() - s))
+        return
+
+    def calc_temperature(self, satellite:SatNode, initial_temp:float=np.random.normal(20, 5))->None:
+        
+        tspan = (self.heatFlux['TIME'].iloc[0], self.heatFlux['TIME'].iloc[-1])
+        teval = self.heatFlux['TIME'].to_numpy()
+
+        sol = solve_ivp(self.__sat_temp_diffeq, tspan, [273.15+initial_temp], t_eval=teval, rtol=1e-8, atol=1e-8, args=(satellite.effArea, satellite.heatCap, ))
+        self.heatFlux['SAT_TEMP'] = sol['y'][0] - 273.15
 
         return
+
+    def __sat_temp_diffeq(self, t:float, state:np.ndarray[float], effArea:float, heatCapacity:float)->float:
+
+        sigma = c.STEFBOLTZ
+        
+        # find nearest neighbors in the set
+        tminF = lambda t: np.abs(o.heatFlux['TIME'] - t).argmin()
+        tminIdx = tminF(t)
+        tmaxIdx = tminIdx + 1
+
+        if tminIdx >= len(self.heatFlux.index):
+            tminIdx = int(self.heatFlux['TIME'].iloc[-2])
+            tmaxIdx = tminIdx + 1
+
+        if tmaxIdx >= len(self.heatFlux.index):
+            tmaxIdx = tminIdx
+            tminIdx = tminIdx-1
+
+        tmin = self.heatFlux['TIME'].iloc[tminIdx]
+        tmax = self.heatFlux['TIME'].iloc[tmaxIdx]
+        Qmin = self.heatFlux['Q_TOTAL'].iloc[tminIdx]
+        Qmax = self.heatFlux['Q_TOTAL'].iloc[tmaxIdx]
+
+        realQ = Qmin + (t - tmin)*(Qmax - Qmin)/(tmax-tmin)
+
+        dt = (-sigma * effArea * state**4 + realQ)/heatCapacity
+        return dt 
 
     def __calc_state(self)->StateVector:
         
@@ -363,13 +409,13 @@ class Orbit:
         T = a**(3/2) * (2*np.pi) / np.sqrt(self.mu)
         return T
 
-    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=1)->pd.DataFrame:
+    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=60)->pd.DataFrame:
         if tspan is None:
             tspan = (0, int(self.T)+1)
         
         t_eval = np.linspace(tspan[0], tspan[1], int((tspan[1] - tspan[0])/tstep)+1)
         
-        sol = solve_ivp(self.__two_body, tspan, self.state.state, t_eval=t_eval)
+        sol = solve_ivp(self.__two_body, tspan, self.state.state, t_eval=t_eval, rtol=1e-8, atol=1e-8)
         
         traj = pd.DataFrame({
                                 "TIME": sol['t'],
@@ -511,14 +557,173 @@ class Orbit:
     
         return x, y, z
 
-if __name__ == '__main__':
-    o = Orbit()
-    a = Material()
-    sat = SatNode(a, a, a)
- 
-    o.calc_temperature(sat)
-    print(o.heatFlux)
-    
-    o.heatFlux['Q_TOTAL'].plot()
+def spos(julianDate:float=None)->np.ndarray:
+    """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
 
+    Calculate position of the Sun relative to Earth based on julian date
+
+    Args:
+        julianDate (float): julian date for day in question
+
+    Returns:
+        np.ndarray: non-normalized position of Sun wrt Earth
+    """
+    jd = julianDate
+    
+    #...Julian days since J2000:
+    n     = jd - 2451545
+
+    #...Mean anomaly (deg{:
+    M     = 357.528 + 0.9856003*n
+    M     = np.mod(M,360)
+
+    #...Mean longitude (deg):
+    L     = 280.460 + 0.98564736*n
+    L     = np.mod(L,360)
+
+    #...Apparent ecliptic longitude (deg):
+    lamda = L + 1.915*c.sind(M) + 0.020*c.sind(2*M)
+    lamda = np.mod(lamda,360)
+
+    #...Obliquity of the ecliptic (deg):
+    eps   = 23.439 - 0.0000004*n
+
+    #...Unit vector from earth to sun:
+    u     = np.array([c.cosd(lamda), c.sind(lamda)*c.cosd(eps), c.sind(lamda)*c.sind(eps)])
+
+    return u
+
+def vec2radec(vec:np.ndarray)->np.ndarray:
+
+    dec = np.arcsin(vec[2])
+    ra = np.arcsin(vec[1]/np.cos(dec))
+
+    return np.array([ra, dec])
+
+def beta_ang(radec:np.ndarray, raan:float, inc:float)->float:
+    ra = radec[0]
+    dec = radec[1]
+
+    bA = np.cos(dec)*np.sin(inc)*np.sin(raan - ra)
+    bB = np.sin(dec)*np.cos(inc)
+    beta = np.arcsin(bA + bB)
+
+    return beta
+
+def eclipse_time(xrow)->float:
+    beta = xrow['BETA']
+    t = xrow['T']
+    r = xrow['SEMI']
+
+    if np.abs(np.sin(beta)) >= c.EARTHRAD/r:
+        return 0
+
+    num = 1 - (c.EARTHRAD/r)**2
+    den = np.cos(beta)
+
+    delT = np.arccos(np.sqrt(num)/den)*t/np.pi
+
+    return delT
+
+def t(a):
+    return 2*np.pi*a/np.sqrt(c.EARTHMU/a)
+
+
+if __name__ == '__main__':
+    N = 100_000    
+    o = Orbit()
+    sat = SatNode(Material(), Material(), Material())
+
+    o.randomize()
+    o.gen_heat_flux(sat)
+    o.calc_temperature(sat)
+
+    o.heatFlux[['Q_TOTAL', 'SAT_TEMP']].plot(subplots=True, layout=(2,1))
     plt.show()
+
+    # print(t(6878))
+
+    # raans = np.random.uniform(0, 2*np.pi, N)
+    # incs = np.random.uniform(0, np.pi/4, N)
+    # semis = np.random.uniform(6778, 7078, N)
+
+
+    # sol = pd.DataFrame()
+    # sol['RAAN'] = raans
+    # sol['INC'] = incs
+    # sol['SEMI'] = semis
+    # sol['T'] = t(sol['SEMI'])
+    # sol['JD'] = np.random.uniform(c.J2000, c.J2000+c.JYEAR, N)
+
+    # start = time.perf_counter()
+
+    # sol['SVECX'], sol['SVECY'], sol['SVECZ'] = spos(sol['JD'].values)
+    # sol['RA'], sol['DEC'] = vec2radec([sol['SVECX'], sol['SVECY'], sol['SVECZ']])
+    # sol['BETA'] = beta_ang([sol['RA'], sol['DEC']], sol['RAAN'], sol['INC'])
+    # sol['EC_TIME'] = sol[['BETA', 'T', 'SEMI']].apply(eclipse_time, axis=1)
+    # sol['EC_FRAC'] = sol['EC_TIME']/sol['T']
+
+    # end = time.perf_counter() - start
+    # print(sol)
+    # print('MAX TIME:\n{}'.format(sol[sol['EC_TIME'] == np.max(sol['EC_TIME'])]))
+    # print('\n{} Calcs: {}\n'.format(N, end))
+    
+
+    # fig = plt.figure()
+    # ax = fig.add_subplot()
+    # ax.scatter(sol['SEMI'], sol['EC_FRAC'])
+    # plt.show()
+
+    # print(o.T, o.semi.value)
+    # print(sv, radec, beta, tec)
+
+    # solvecX, solvecY, solvecZ = np.apply_along_axis(spos, 0, jdspan)
+
+    # print(solvecs[0][0], solvecs[1][0], solvecs[2][0])
+    # print(solvecX[0], solvecY[0], solvecZ[0])
+    
+
+    
+
+    # # o.randomize()
+    # # o.calc_temperature(sat)
+
+    
+    # # ax = fig.add_subplot(211)
+    # # ax2 = fig.add_subplot(212)
+    
+    # N = 10
+    # start = time.perf_counter()
+    # for i in range(N):
+    #     fig = plt.figure()
+    #     ax1 = fig.add_subplot(2,1,1)
+    #     ax2 = fig.add_subplot(2,1,2)
+    #     # ax3 = fig.add_subplot(3,1,3, projection='3d')
+
+    #     loop = time.perf_counter()
+    #     print('\nLOOP: {}'.format(i+1))
+        
+    #     o.randomize()
+    #     rand = time.perf_counter() - loop
+    #     print('Rand Gen: {}'.format(rand))
+
+    #     o.gen_heat_flux(sat)
+    #     heat = time.perf_counter() - loop - rand
+    #     print('Heat Gen: {}'.format(heat))
+
+    #     o.calc_temperature(sat)
+    #     temp = time.perf_counter() - loop - heat
+    #     print('Temp Gen: {}'.format(temp))
+
+    #     ax1.set_title('{}{} x {}km'.format(np.round(o.inc.value, 2), c.DEG, np.round(o.semi.value)))
+    #     ax1.plot(o.heatFlux['TIME'], o.heatFlux['SAT_TEMP'])
+    #     ax2.plot(o.heatFlux['TIME'], o.heatFlux['Q_TOTAL'])
+    #     # ax3.plot(o.path['RX'], o.path['RY'], o.path['RZ'], marker='--')
+        
+        
+
+    # end = time.perf_counter() - start
+    # print('\n\nTotal Time: {}/run'.format(end/N))
+
+    # o.heatFlux[['SAT_TEMP', 'Q_TOTAL']].plot(subplots=True, layout=(2,1))
+    # plt.show()

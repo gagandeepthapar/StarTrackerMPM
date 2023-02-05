@@ -1,5 +1,5 @@
 # Star Tracker Measurement Process Model (STMPM)
-A Measurement Process Model of a Star Tracker in LEO using Monte Carlo Analysis and Effects of the Environment via First Principles Analysis.
+**A Robust Model for Measuring Accuracy and Precision of LEO-Based Star Trackers: An Analysis of Disturbance Propagation**
 
 ## Considerations
 Several factors need to be considered to accurately determine the measurement accuracy and precision of a star tracker in orbit. A few of the considerations are listed below

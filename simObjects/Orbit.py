@@ -108,15 +108,17 @@ class OrbitData:
 
     mu = c.EARTHMU
     
-    def __init__(self,*, tlePD:pd.DataFrame=None, tleJSONFP:str=c.CUBESATS)->None:
+    def __init__(self, tlePD:pd.DataFrame=None, tleJSONFP:str=c.CUBESATS)->None:
 
         if tlePD is None:
             tlePD = self.__read_TLE_to_df(tleJSONFP)
         
         self.TLES = tlePD
-        # self.TLES['THETA'] = self.TLES.apply(self.__calc_theta, axis=1)
 
-        self.params = self.__create_params()
+        self.params:dict = self.__create_params()
+        self.params['THETA'] = UniformParameter(0, 360, name='THETA', units='deg')
+        self.params['INITIAL_TEMP'] = Parameter(20, 5, 0, name='INITIAL_TEMP', units='C')
+        self.params['JULIAN_DATE'] = UniformParameter(c.J2000, c.J2000 + c.JYEAR, name='JULIAN_DATE', units='Day')
 
         return
     
@@ -153,19 +155,16 @@ class OrbitData:
         mean_mot = np.empty(filelen, dtype=float)
         mean_anom = np.empty(filelen, dtype=float)
 
-        with alive_bar(filelen, title='Reading in TLE Data') as bar:
-            for i in range(filelen):
-                tle = TLE.from_dict(sat_tles[i])
-                
-                ecc[i] = tle.ecc
-                inc[i] = tle.inc 
-                raan[i] = tle.raan
-                arg[i] = tle.arg
-                semi[i] = tle.a
-                mean_mot[i] = tle.mean_motion
-                mean_anom[i] = tle.mean_anomaly
-
-                bar()
+        for i in range(filelen):
+            tle = TLE.from_dict(sat_tles[i])
+            
+            ecc[i] = tle.ecc
+            inc[i] = tle.inc 
+            raan[i] = tle.raan
+            arg[i] = tle.arg
+            semi[i] = tle.a
+            mean_mot[i] = tle.mean_motion
+            mean_anom[i] = tle.mean_anomaly
 
         tledict = {
                     "ECC":ecc,
@@ -180,32 +179,6 @@ class OrbitData:
         df = pd.DataFrame(tledict)
 
         return df
-    
-    def __calc_theta(self,x):
-        mean_anom = x['MEAN_ANOMALY']
-        ecc = x['ECC']
-        Me = np.deg2rad(mean_anom)
-        
-        E_0 = Me + ecc
-        if Me < np.pi:
-            E_0 = Me - ecc
-
-        f = lambda E: Me - E + ecc*np.sin(E)
-        fp = lambda E: -1 + ecc*np.sin(E)
-        newt = lambda E: E - f(E)/fp(E)
-
-        E_1 = newt(E_0)
-        err = np.abs(E_1 - E_0)
-
-        while err > 1e-8:
-            E_0 = E_1
-            E_1 = newt(E_0)
-            err = np.abs(E_1 - E_0)
-        
-        TA = 2*c.atand((np.sqrt((1+ecc)/(1-ecc)) * np.tan(E_1/2)))
-        theta = np.mod(TA, 360)
-        # print(theta)
-        return theta
 
     def __create_params(self)->dict:
         param_dict = {}
@@ -238,209 +211,151 @@ class OrbitData:
 
         return Parameter(mean, std, 0, name=name, retVal=retVal)
 
-class Orbit:
+class TempData:
 
-    mu:int = c.EARTHMU
-    rad:int = c.EARTHRAD
+    def __init__(self, Absorptivity:Parameter=Parameter(0.5, 0.1, name='Absorptivity', units='-'),
+                       Emissivity:Parameter=Parameter(0.5, 0.1, name='Emissivity', units='-'),
+                       Area:Parameter=Parameter(6*c.C1U, 0.0003, name='1U', units='m'), *, temp_pkl:str=c.TEMP_DATA, orbitData = OrbitData())->None:
 
-    def __init__(self, incParam:Parameter=None,
-                       eccParam:Parameter=None,
-                       semiParam:Parameter=None,
-                       *,
-                       name:str = None,
-                       orbitData:OrbitData=None)->None:
+        self.orbitdata = orbitData
+        self.abs = Absorptivity
+        self.emi = Emissivity
+        self.area = Area
 
-        self.orbitData:OrbitData = orbitData
 
-        self.inc:Parameter = self.__set_parameter(incParam, "INC")
-        self.ecc:Parameter = self.__set_parameter(eccParam, "ECC")
-        self.semi:Parameter = self.__set_parameter(semiParam, "SEMI")
+        if temp_pkl is None:
+            self.temp_data, self.helper_data = self.recalc_temp()
 
-        self.arg = UniformParameter(0, 360, 'ARG', c.DEG)
-        self.raan = UniformParameter(0, 360, 'RAAN', c.DEG)
-        self.theta = UniformParameter(0, 360, 'THETA', c.DEG)
-        self.jd = UniformParameter(c.J2000, c.J2000+365.25, 'JULIAN_DATE', 'days')
+        else:
+            self.temp_data = pd.read_pickle(temp_pkl)
 
-        self.T:float=None
-        self.state:StateVector=None
-        self.path:pd.DataFrame=None
-        self.heatFlux = pd.DataFrame()
-
-        self.name = name
-        self.randomize()
+        self.temp_param = self.__set_parameter()
+        self.params = list(self.temp_data.columns)
         return
-    
+
     def __repr__(self)->str:
-        name = 'Orbit: {}'\
-                '\n\t{}'\
-                '\n\t{}'\
-                '\n\t{}'.format(self.name,self.inc, self.ecc, self.semi)
-        return name
+        return 'Heat Data Class:\n{}'.format(self.temp_data)
 
-    def randomize(self, params:list=None)->None:
+    def recalc_temp(self, mod_params:list=None, num_runs:int=10_000, *, min_alt:float=300)->pd.DataFrame:
 
-        if params is None:
-            params = [self.inc, self.ecc, self.semi, self.arg, self.raan, self.theta, self.jd]
+        if mod_params is None:
+            mod_params = list(self.orbitdata.params.keys())
+        
+        helper_df = pd.DataFrame()
 
-        for param in params:
-            param.modulate()
+        # ORBIT + SAT PARAMS
+        temp_df = self.__modulate_params(mod_params, num_runs)
+        temp_df = temp_df.drop(['ARG', 'MEAN_ANOMALY', 'MEAN_MOTION'], axis=1)
+        
+        temp_df = temp_df[temp_df['SEMI'] * (1 - temp_df['ECC']) > (c.EARTHRAD + min_alt)]
+        temp_df = temp_df.reset_index(drop=True)
+        
+        num_runs = len(temp_df.index)   # update number of runs to number of feasible orbits generated
 
-        self.T = self.__calc_period()
+        temp_df['PERIOD'] = 2*np.pi / np.sqrt(c.EARTHMU) * temp_df['SEMI']**1.5
+        temp_df['AREA'] = self.area.modulate(num_runs)
+        temp_df['ALPHA'] = self.abs.modulate(num_runs)
+        temp_df['EMI'] = self.emi.modulate(num_runs)
 
-        self.state = self.__calc_state()
-        self.path = self.__propagate_orbit()
+        # Q_ALBEDO
+        # TODO: FIX VIEW FACTOR -> NOT 0 EVER; NEED TO TAKE INTEGRAL OF FUNCTION AND GET AVERAGE Q_ALB OVER PERIOD
+        helper_df['VF'] = self.__calc_view_factor(num_runs)
+        temp_df['Q_ALB'] = self.__calc_Q_alb(temp_df['AREA'], temp_df['ALPHA'], helper_df['VF'])
 
-        self.heatFlux = pd.DataFrame()
-        self.heatFlux['TIME'] = self.path['TIME']
+        # Q_IR
+        helper_df['Q_H'] = self.__calc_Qh(temp_df['SEMI'], temp_df['ECC'], temp_df['THETA'])
+        helper_df['Fa'], helper_df['Fb'] = self.__calc_face_ir_view(helper_df['Q_H'])
+        temp_df['Q_IR'] = self.__calc_Q_ir(temp_df['EMI'], temp_df['AREA'], helper_df['Fa'], helper_df['Fb'])
 
+        # Q_SOL
+        helper_df['Sun_pos'] = temp_df['JULIAN_DATE'].apply(self.__solar_position)
+        radec = helper_df['Sun_pos'].apply(self.__vec_to_ra_dec)
+        helper_df['RA'] = radec.apply(lambda x: x[0])
+        helper_df['DEC'] = radec.apply(lambda x: x[1])
+        helper_df['BETA_ANG'] = self.__calc_beta_ang(helper_df['RA'], helper_df['DEC'], temp_df['RAAN'], temp_df['INC'])
+        temp_df['ECLIPSE_TIME'] = 0
+        ecl_flag =  np.abs(np.sin(helper_df['BETA_ANG'])) < 1/helper_df['Q_H']
+        temp_df['ECLIPSE_TIME'].loc[ecl_flag] = self.__calc_eclipse_time(helper_df['Q_H'], helper_df['BETA_ANG'], temp_df['PERIOD'])
+        temp_df['ECLIPSE_FRAC'] = temp_df['ECLIPSE_TIME']/temp_df['PERIOD']
+        temp_df['Q_SOL'] = self.__calc_Q_sol(temp_df['ALPHA'], temp_df['AREA'], temp_df['ECLIPSE_FRAC'])
+
+        # TEMP CALCS
+        temp_df = temp_df[['PERIOD', 'ECLIPSE_TIME', 'Q_IR', 'Q_ALB', 'Q_SOL', 'AREA', 'EMI', 'INITIAL_TEMP']].apply(self.__calc_temp, axis=1)
+        
+        return temp_df, helper_df
+
+    def save_frame(self, path:str=c.TEMP_DATA)->None:
+        self.temp_data.to_pickle(path)
         return
 
-    def gen_heat_flux(self, satellite:SatNode)->None:
-        iters = len(self.path.index)
+    """ 
+    UTILITY 
+    """
+    def __modulate_params(self, mod_params:list, num_runs:int)->pd.DataFrame:
 
-        Qsol = np.empty(iters, dtype=float)
-        Qalb = np.empty(iters, dtype=float)
-        Qir = np.empty(iters, dtype=float)
-        Qtot = np.empty(iters, dtype=float)
+        df = pd.DataFrame()
 
-        ti = time.perf_counter()
-        for i in range(iters):
-            row = self.path.iloc[i]
-            satState = row[['RX', 'RY', 'RZ', 'VX', 'VY', 'VZ']].to_numpy()
-            
-            sunState = self.__solar_position(self.jd.value + row['TIME']/(24*3600))
+        for param_name in self.orbitdata.params:
+            param_cls = self.orbitdata.params[param_name]
+            if param_name in mod_params:
+                df[param_name] = param_cls.modulate(num_runs)
+            else:
+                df[param_name] = np.ones(num_runs) * param_cls.ideal
 
-            sunUnitState = sunState/np.linalg.norm(sunState)
+        return df
 
-            Qs = satellite.calc_all_Q(satState, sunUnitState)
+    def __set_parameter(self)->Parameter:
 
-            if not self.__solar_line_of_sight(self.jd.value + row['TIME']/(24*3600), satState[:3]):
-                Qs[0] = 0
+        data = self.temp_data[['MEAN_TEMP', 'TEMP_STD']]
 
-            Qsol[i] = Qs[0]
-            Qalb[i] = Qs[1]
-            Qir[i] = Qs[2]
-            Qtot[i] = np.sum(Qs)
-        
-        print('loop gen: {}'.format(time.perf_counter() - ti))
+        mean = np.mean(data['MEAN_TEMP'])
+        std = np.mean(data['TEMP_STD'])
 
-        s = time.perf_counter()
-        self.heatFlux['Q_SOLAR'] = Qsol
-        self.heatFlux['Q_ALBEDO'] = Qalb
-        self.heatFlux['Q_IR'] = Qir
-        self.heatFlux['Q_TOTAL'] = Qtot
-        print('calc gen: {}'.format(time.perf_counter() - s))
-        return
+        return Parameter(mean, std, 0, name='TEMP', units='C')
+    
+    """ 
+    Q ALBEDO
+    """
+    def __calc_view_factor(self, num_runs:int, mean:float=0.5, stddev:float=0.15, max:float=0.8)->float:
+        R = max
+        S = stddev
+        M = mean
+        cst = 1/(S*np.sqrt(2*np.pi)) 
 
-    def calc_temperature(self, satellite:SatNode, initial_temp:float=np.random.normal(20, 5))->None:
-        
-        tspan = (self.heatFlux['TIME'].iloc[0], self.heatFlux['TIME'].iloc[-1])
-        teval = self.heatFlux['TIME'].to_numpy()
+        to_norm = lambda x: np.exp(-0.5*((x - M)/S)**2) * cst
+        to_vf = lambda x: R - np.minimum(R, x)
 
-        sol = solve_ivp(self.__sat_temp_diffeq, tspan, [273.15+initial_temp], t_eval=teval, rtol=1e-8, atol=1e-8, args=(satellite.effArea, satellite.heatCap, ))
-        self.heatFlux['SAT_TEMP'] = sol['y'][0] - 273.15
+        x = np.random.uniform(0, 1, num_runs)
+        vf = np.apply_along_axis(to_vf, 0, np.apply_along_axis(to_norm, 0, x))
 
-        return
+        return vf
 
-    def __sat_temp_diffeq(self, t:float, state:np.ndarray[float], effArea:float, heatCapacity:float)->float:
+    def __calc_Q_alb(self, area:float, alpha:float, vf:float)->float:
+        return alpha * area * c.TEMP_GAMMA * c.EARTHFLUX * vf
 
-        sigma = c.STEFBOLTZ
-        
-        # find nearest neighbors in the set
-        tminF = lambda t: np.abs(o.heatFlux['TIME'] - t).argmin()
-        tminIdx = tminF(t)
-        tmaxIdx = tminIdx + 1
+    """
+    Q INFRARED
+    """
+    def __calc_Qh(self, semi_major:float, ecc:float, theta:float)->float:
+        pos = semi_major * (1 - ecc**2)/(1 + ecc*np.cos(np.deg2rad(theta)))
+        return pos/c.EARTHRAD
 
-        if tminIdx >= len(self.heatFlux.index):
-            tminIdx = int(self.heatFlux['TIME'].iloc[-2])
-            tmaxIdx = tminIdx + 1
+    def __calc_face_ir_view(self, h:float)->float:
 
-        if tmaxIdx >= len(self.heatFlux.index):
-            tmaxIdx = tminIdx
-            tminIdx = tminIdx-1
+        Fa = 1/h**2
+        Fb = -np.sqrt(h**2 -1)/(np.pi * h**2) + 1/np.pi * np.arctan(1/np.sqrt(h**2-1))
 
-        tmin = self.heatFlux['TIME'].iloc[tminIdx]
-        tmax = self.heatFlux['TIME'].iloc[tmaxIdx]
-        Qmin = self.heatFlux['Q_TOTAL'].iloc[tminIdx]
-        Qmax = self.heatFlux['Q_TOTAL'].iloc[tmaxIdx]
+        return Fa, Fb
 
-        realQ = Qmin + (t - tmin)*(Qmax - Qmin)/(tmax-tmin)
+    def __calc_Q_ir(self, emi:float, area:float, face_view_A:float, face_view_B:float)->None:
+        faceA = 1/3 * emi * area * c.EARTHFLUX * face_view_A
+        faceB = 2/3 * emi * area * c.EARTHFLUX * face_view_B
+        return faceA + faceB
 
-        dt = (-sigma * effArea * state**4 + realQ)/heatCapacity
-        return dt 
-
-    def __calc_state(self)->StateVector:
-        
-        inc = self.inc.value
-        ecc = self.ecc.value
-        theta = self.theta.value
-        arg = self.arg.value
-        raan = self.raan.value
-        a = self.semi.value
-        
-        __R1 = lambda theta: np.array([[1, 0, 0], [0, c.cosd(theta), c.sind(theta)], [0, -c.sind(theta), c.cosd(theta)]])
-        __R3 = lambda theta: np.array([[c.cosd(theta), c.sind(theta), 0], [-c.sind(theta), c.cosd(theta), 0], [0, 0, 1]]) 
-
-        h = np.sqrt(a * self.mu * (1 - ecc**2))
-
-        peri_r = h**2 / self.mu * (1/(1 + ecc*c.cosd(theta))) * np.array([[c.cosd(theta)],[c.sind(theta)], [0]])
-        peri_v = self.mu / h * np.array([[-c.sind(theta)], [ecc + c.cosd(theta)], [0]])
-
-        Q_bar = __R3(arg) @ __R1(inc) @ __R3(raan)
-
-        r = np.transpose(Q_bar) @ peri_r
-        v = np.transpose(Q_bar) @ peri_v
-
-        return StateVector(*r, *v, a=a)
-
-    def __set_parameter(self, param:Parameter, name:str)->Parameter:
-        if param is not None:
-            return param
-        
-        if self.orbitData is None:
-            print('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
-            self.orbitData = OrbitData()
-        
-        print('{}Generating Parameter: {}{}'.format(c.YELLOW,c.DEFAULT,name))
-        return self.orbitData.params[name]
-        
-    def __calc_period(self)->float:
-        a = self.semi.value
-        T = a**(3/2) * (2*np.pi) / np.sqrt(self.mu)
-        return T
-
-    def __propagate_orbit(self, tspan:tuple[float]=None, tstep:float=60)->pd.DataFrame:
-        if tspan is None:
-            tspan = (0, int(self.T)+1)
-        
-        t_eval = np.linspace(tspan[0], tspan[1], int((tspan[1] - tspan[0])/tstep)+1)
-        
-        sol = solve_ivp(self.__two_body, tspan, self.state.state, t_eval=t_eval, rtol=1e-8, atol=1e-8)
-        
-        traj = pd.DataFrame({
-                                "TIME": sol['t'],
-                                "RX": sol['y'][0],
-                                "RY": sol['y'][1],
-                                "RZ": sol['y'][2],
-                                "VX": sol['y'][3],
-                                "VY": sol['y'][4],
-                                "VZ": sol['y'][5],
-                            })
-
-        return traj
-
-    def __two_body(self, t:float, state:np.ndarray, mu=None)->np.ndarray:
-        if mu is None:
-            mu = self.mu
-
-        r = state[:3]
-        R = np.linalg.norm(r)
-        v = state[3:]
-
-        a = -mu * r / (R**3)
-        return np.append(v, a)
-
-    def __solar_position(self, julianDate:float=None)->np.ndarray:
+    """ 
+    Q SOLAR
+    """
+    def __solar_position(self, julianDate:float)->np.ndarray:
         """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
 
         Calculate position of the Sun relative to Earth based on julian date
@@ -453,9 +368,6 @@ class Orbit:
         """
 
         jd = julianDate
-        if julianDate is None:
-            jd = self.jd.value
-
         
         #...Julian days since J2000:
         n     = jd - 2451545
@@ -486,244 +398,141 @@ class Orbit:
 
         return r_S
 
-    def __solar_line_of_sight(self, julianDate:float=None, position:np.ndarray=None)->bool:
-
-        r_earth_sun = self.__solar_position(julianDate)
-
-        r_earth_sc = position
-        if position is None:
-            r_earth_sc = self.state.position
-
-        theta = np.arccos(np.dot(r_earth_sun, r_earth_sc)/(np.linalg.norm(r_earth_sun)*np.linalg.norm(r_earth_sc)))
-        thetaA = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sun)))
-        thetaB = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sc)))
-
-        return theta <= (thetaA + thetaB)
-
-    def plot_system(self):
-
-        fig = plt.figure()
-        ax = plt.axes(projection='3d')
-        # fig.add_axes(ax)
+    def __vec_to_ra_dec(self, vector:np.ndarray)->float:
         
-        # al = Material()
-        # sat = SatNode(al, al, al)
-        # att = sat.get_attitude()
+        vec = np.linalg.norm(vector)
+        v = vector/vec
 
-        # sat pos and path
-        ax.plot(self.path['RX'],self.path['RY'], self.path['RZ'], 'y--', label='orbit')
-        ax.scatter(*self.state.position, c='r', label='satellite')
-        # ax.quiver(*self.state.position, *(att[0]), length=1500, color='red', label=r'$Sat_{+X}$')
-        # ax.quiver(*self.state.position, *(att[1]), length=1500, color='darkviolet',  label=r'$Sat_{+Y}$')
-        # ax.quiver(*self.state.position, *(att[2]), length=1500, color='blue',  label=r'$Sat_{+Z}$')
+        dec = np.arcsin(v[2])
+        ra = np.arcsin(v[1]/np.cos(dec)) 
+        return ra, dec
 
-        # ax.quiver(*self.state.position, *(-1*att[0]), length=1500, color='red', linestyle='--', label=r'$Sat_{-X}$')
-        # ax.quiver(*self.state.position, *(-1*att[1]), length=1500, color='darkviolet', linestyle='--',  label=r'$Sat_{-Y}$')
-        # ax.quiver(*self.state.position, *(-1*att[2]), length=1500, color='blue', linestyle='--',  label=r'$Sat_{-Z}$')
+    def __calc_beta_ang(self, ra:float, dec:float, raan:float, inc:float)->float:
 
-        # earth
-        x, y, z = self.__earth_model()
-        ax.plot_surface(x, y, z, alpha=0.2)
+        bA = np.cos(dec)*np.sin(inc)*np.sin(raan - ra)
+        bB = np.sin(dec)*np.cos(inc)
+        beta = np.arcsin(bA + bB)
 
-        # dir to sun
-        rS = self.__solar_position()
-        rS = rS/np.linalg.norm(rS)
+        return beta
 
-        col = 'red'
-        los = 'Not Found'
-        if self.__solar_line_of_sight():
-            col = 'green'
-            los = 'Acquired'
+    def __calc_eclipse_time(self, q_h:float, beta:float, period:float)->float:
 
-        ax.quiver(0,0,0, *rS, length=6000, color=col, label='Dir to Sun')
+        num = 1 - (1/q_h)**2
+        den = np.cos(beta)
 
-        title = 'Simulated Orbit on JD {}\nSolar Line-of-Sight {}'.format(self.jd.value, los)
+        delT = np.arccos(np.sqrt(num)/den)*period/np.pi
 
-        ax.legend()
-        ax.axis('equal')
-        ax.set_title(title)
-        ax.set_xlabel('X [km]')
-        ax.set_ylabel('Y [km]')
-        ax.set_zlabel('Z [km]')
+        return delT
+
+    def __calc_Q_sol(self, alpha:float, area:float, ec_frac:float)->float:
+        return alpha * 0.4 * area * c.SOLARFLUX * (1 - ec_frac)
+    
+
+    """ 
+    TEMP ODE
+    """
+    def __calc_temp(self, row:pd.Series)->pd.Series:
+
+        T = row.PERIOD
+        eT = row.ECLIPSE_TIME
+
+        tA = (T-eT)/2
+        tB = tA + eT
+
+        def __temp_diffeq(t:float, state:float, heat_capacity:float=961)->float:
+
+            Q = row.Q_IR + row.Q_ALB + row.Q_SOL
+
+            if tA < t and t <= tB:
+                Q -= row.Q_SOL
+
+            return (-1*c.STEFBOLTZ*row.AREA*row.EMI*state**4 + Q)/heat_capacity
+
+        sol = solve_ivp(__temp_diffeq, (0, T), [273.15+row.INITIAL_TEMP], t_eval=np.linspace(0, T, 100), rtol=1e-5, atol=1e-5)
+        temps = np.array(sol['y'][0])
+
+        row['MEAN_TEMP'] = np.mean(temps) - 273.15
+        row['TEMP_STD']  = np.std(temps)
+
+        return row
+
+class Orbit:
+
+    mu:int = c.EARTHMU
+    rad:int = c.EARTHRAD
+
+    def __init__(self, incParam:Parameter=None,
+                       eccParam:Parameter=None,
+                       semiParam:Parameter=None,
+                       tempParam:Parameter=None,
+                       *,
+                       name:str = None,
+                       orbitData:OrbitData=None,
+                       tempData:TempData=None)->None:
+
+        self.orbitData:OrbitData = orbitData
+        self.tempData:TempData = tempData
+
+        self.inc:Parameter = self.__set_parameter(incParam, "INC")
+        self.ecc:Parameter = self.__set_parameter(eccParam, "ECC")
+        self.semi:Parameter = self.__set_parameter(semiParam, "SEMI")
+        self.temp:Parameter = self.__set_parameter(tempParam, "TEMP")
+
+        self.arg = UniformParameter(0, 360, 'ARG', c.DEG)
+        self.raan = UniformParameter(0, 360, 'RAAN', c.DEG)
+        self.theta = UniformParameter(0, 360, 'THETA', c.DEG)
+        self.jd = UniformParameter(c.J2000, c.J2000+365.25, 'JULIAN_DATE', 'days')
+
+        self.params = {
+                        'INC':self.inc,
+                        'ECC':self.ecc,
+                        'SEMI':self.semi,
+                        'TEMP':self.temp,
+                        'ARG':self.arg,
+                        'RAAN':self.raan,
+                        'THETA':self.theta,
+                        'JULIAN_DATE':self.jd
+                      }
+
+        self.data = self.randomize()
+        self.name = name
 
         return
     
-    def __earth_model(self)->tuple[float]:
+    def __repr__(self)->str:
+        name = 'Orbit: {}'\
+                '\n\t{}'\
+                '\n\t{}'\
+                '\n\t{}'.format(self.name,self.inc, self.ecc, self.semi)
+        return name
 
-        u, v = np.mgrid[0:2*np.pi:200j, 0:np.pi:100j]
-        x = c.EARTHRAD*np.cos(u)*np.sin(v)
-        y = c.EARTHRAD*np.sin(u)*np.sin(v)
-        z = c.EARTHRAD*np.cos(v)
-    
-        return x, y, z
+    def randomize(self, mod_params:list=None, num:int=10_000)->None:
+        df = pd.DataFrame()
 
-def spos(julianDate:float=None)->np.ndarray:
-    """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
+        if mod_params is None:
+            mod_params = list(self.params.keys())
 
-    Calculate position of the Sun relative to Earth based on julian date
+        for param_name in self.params:
+            if param_name in mod_params:
+                df[param_name] = self.params[param_name].modulate(num)
+            else:
+                df[param_name] = self.ideal*np.ones(num)
 
-    Args:
-        julianDate (float): julian date for day in question
-
-    Returns:
-        np.ndarray: non-normalized position of Sun wrt Earth
-    """
-    jd = julianDate
-    
-    #...Julian days since J2000:
-    n     = jd - 2451545
-
-    #...Mean anomaly (deg{:
-    M     = 357.528 + 0.9856003*n
-    M     = np.mod(M,360)
-
-    #...Mean longitude (deg):
-    L     = 280.460 + 0.98564736*n
-    L     = np.mod(L,360)
-
-    #...Apparent ecliptic longitude (deg):
-    lamda = L + 1.915*c.sind(M) + 0.020*c.sind(2*M)
-    lamda = np.mod(lamda,360)
-
-    #...Obliquity of the ecliptic (deg):
-    eps   = 23.439 - 0.0000004*n
-
-    #...Unit vector from earth to sun:
-    u     = np.array([c.cosd(lamda), c.sind(lamda)*c.cosd(eps), c.sind(lamda)*c.sind(eps)])
-
-    return u
-
-def vec2radec(vec:np.ndarray)->np.ndarray:
-
-    dec = np.arcsin(vec[2])
-    ra = np.arcsin(vec[1]/np.cos(dec))
-
-    return np.array([ra, dec])
-
-def beta_ang(radec:np.ndarray, raan:float, inc:float)->float:
-    ra = radec[0]
-    dec = radec[1]
-
-    bA = np.cos(dec)*np.sin(inc)*np.sin(raan - ra)
-    bB = np.sin(dec)*np.cos(inc)
-    beta = np.arcsin(bA + bB)
-
-    return beta
-
-def eclipse_time(xrow)->float:
-    beta = xrow['BETA']
-    t = xrow['T']
-    r = xrow['SEMI']
-
-    if np.abs(np.sin(beta)) >= c.EARTHRAD/r:
-        return 0
-
-    num = 1 - (c.EARTHRAD/r)**2
-    den = np.cos(beta)
-
-    delT = np.arccos(np.sqrt(num)/den)*t/np.pi
-
-    return delT
-
-def t(a):
-    return 2*np.pi*a/np.sqrt(c.EARTHMU/a)
-
-
-if __name__ == '__main__':
-    N = 100_000    
-    o = Orbit()
-    sat = SatNode(Material(), Material(), Material())
-
-    o.randomize()
-    o.gen_heat_flux(sat)
-    o.calc_temperature(sat)
-
-    o.heatFlux[['Q_TOTAL', 'SAT_TEMP']].plot(subplots=True, layout=(2,1))
-    plt.show()
-
-    # print(t(6878))
-
-    # raans = np.random.uniform(0, 2*np.pi, N)
-    # incs = np.random.uniform(0, np.pi/4, N)
-    # semis = np.random.uniform(6778, 7078, N)
-
-
-    # sol = pd.DataFrame()
-    # sol['RAAN'] = raans
-    # sol['INC'] = incs
-    # sol['SEMI'] = semis
-    # sol['T'] = t(sol['SEMI'])
-    # sol['JD'] = np.random.uniform(c.J2000, c.J2000+c.JYEAR, N)
-
-    # start = time.perf_counter()
-
-    # sol['SVECX'], sol['SVECY'], sol['SVECZ'] = spos(sol['JD'].values)
-    # sol['RA'], sol['DEC'] = vec2radec([sol['SVECX'], sol['SVECY'], sol['SVECZ']])
-    # sol['BETA'] = beta_ang([sol['RA'], sol['DEC']], sol['RAAN'], sol['INC'])
-    # sol['EC_TIME'] = sol[['BETA', 'T', 'SEMI']].apply(eclipse_time, axis=1)
-    # sol['EC_FRAC'] = sol['EC_TIME']/sol['T']
-
-    # end = time.perf_counter() - start
-    # print(sol)
-    # print('MAX TIME:\n{}'.format(sol[sol['EC_TIME'] == np.max(sol['EC_TIME'])]))
-    # print('\n{} Calcs: {}\n'.format(N, end))
-    
-
-    # fig = plt.figure()
-    # ax = fig.add_subplot()
-    # ax.scatter(sol['SEMI'], sol['EC_FRAC'])
-    # plt.show()
-
-    # print(o.T, o.semi.value)
-    # print(sv, radec, beta, tec)
-
-    # solvecX, solvecY, solvecZ = np.apply_along_axis(spos, 0, jdspan)
-
-    # print(solvecs[0][0], solvecs[1][0], solvecs[2][0])
-    # print(solvecX[0], solvecY[0], solvecZ[0])
-    
-
-    
-
-    # # o.randomize()
-    # # o.calc_temperature(sat)
-
-    
-    # # ax = fig.add_subplot(211)
-    # # ax2 = fig.add_subplot(212)
-    
-    # N = 10
-    # start = time.perf_counter()
-    # for i in range(N):
-    #     fig = plt.figure()
-    #     ax1 = fig.add_subplot(2,1,1)
-    #     ax2 = fig.add_subplot(2,1,2)
-    #     # ax3 = fig.add_subplot(3,1,3, projection='3d')
-
-    #     loop = time.perf_counter()
-    #     print('\nLOOP: {}'.format(i+1))
+        return df
+  
+    def __set_parameter(self, param:Parameter, name:str)->Parameter:
+        if param is not None:
+            return param
         
-    #     o.randomize()
-    #     rand = time.perf_counter() - loop
-    #     print('Rand Gen: {}'.format(rand))
+        if self.orbitData is None:
+            print('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
+            self.orbitData = OrbitData()
 
-    #     o.gen_heat_flux(sat)
-    #     heat = time.perf_counter() - loop - rand
-    #     print('Heat Gen: {}'.format(heat))
-
-    #     o.calc_temperature(sat)
-    #     temp = time.perf_counter() - loop - heat
-    #     print('Temp Gen: {}'.format(temp))
-
-    #     ax1.set_title('{}{} x {}km'.format(np.round(o.inc.value, 2), c.DEG, np.round(o.semi.value)))
-    #     ax1.plot(o.heatFlux['TIME'], o.heatFlux['SAT_TEMP'])
-    #     ax2.plot(o.heatFlux['TIME'], o.heatFlux['Q_TOTAL'])
-    #     # ax3.plot(o.path['RX'], o.path['RY'], o.path['RZ'], marker='--')
+        if self.tempData is None:
+            print('{}Generating Temp Data{}'.format(c.YELLOW, c.DEFAULT))
+            self.tempData = TempData(orbitData=self.orbitData)
         
-        
+        if name == 'TEMP':
+            return self.tempData.temp_param
 
-    # end = time.perf_counter() - start
-    # print('\n\nTotal Time: {}/run'.format(end/N))
-
-    # o.heatFlux[['SAT_TEMP', 'Q_TOTAL']].plot(subplots=True, layout=(2,1))
-    # plt.show()
+        return self.orbitData.params[name]

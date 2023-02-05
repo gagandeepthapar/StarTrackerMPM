@@ -7,18 +7,10 @@ sys.path.append(sys.path[0] + '/..')
 from dataclasses import dataclass
 from json import load as jsonload
 
-import matplotlib.pyplot as plt
-from alive_progress import alive_bar
-from MaterialProperty import Material
 from Parameter import Parameter, UniformParameter
 from scipy.integrate import solve_ivp
-from scipy.fft import dst, dct
 
 import constants as c
-
-import time
-from MaterialProperty import Material, SatNode
-
 
 @dataclass
 class StateVector:

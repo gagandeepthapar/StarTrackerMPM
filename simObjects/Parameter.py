@@ -18,7 +18,7 @@ class Parameter:
         self.__err_mean = mean
         self.__err_stddev = stddev
         self._color = color
-        self.range = self.__err_mean + (3*self.__err_stddev)
+        self.range = self.__err_mean + (5*self.__err_stddev)
         self.minRange = self.ideal - self.range
         self.maxRange = self.ideal + self.range
 
@@ -52,7 +52,10 @@ class Parameter:
 
     def _init_from_json(fp:str,name:str)->None:
 
-        camDict = json.load(open(fp))
+        with open(fp) as fp_open:
+            camDict = json.load(fp_open)
+            
+        print(camDict)
 
         ideal = camDict[name+"_IDEAL"]
         mean = camDict[name+"_MEAN"]

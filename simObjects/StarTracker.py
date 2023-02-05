@@ -1,18 +1,18 @@
+import sys
+
 import numpy as np
 
-import sys
 sys.path.append(sys.path[0] + '/..')
-import constants as c
-
 import json
+
+import constants as c
 
 from .Parameter import Parameter
 
 
 class StarTracker:
 
-    def __init__(self, centroid_accuracy:Parameter=None,
-                       principal_point_accuracy:Parameter=None,
+    def __init__(self, principal_point_accuracy:Parameter=None,
                        focal_length:Parameter=None,
                        array_tilt:Parameter=None,
                        distortion:Parameter=None,
@@ -24,33 +24,27 @@ class StarTracker:
         self.cam_name = self._set_name(cam_name)
 
         # set properties of camera
-        self.ctr_acc = self._set_parameter(centroid_accuracy, "CENTROID_ACCURACY")
-        self.ppt_acc = self._set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
-        self.array_tilt = self._set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
-        self.distortion = self._set_parameter(distortion, "DISTORTION")
+        self.ppt_acc = self.__set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
+        self.array_tilt = self.__set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
+        self.distortion = self.__set_parameter(distortion, "DISTORTION")
 
-        f_len_mm = self._set_parameter(focal_length, "FOCAL_LENGTH")
-        self._fov = self._set_img_fov(f_len_mm=f_len_mm)
+        f_len_mm = self.__set_parameter(focal_length, "FOCAL_LENGTH")
+        self._fov = self.__set_img_fov(f_len_mm=f_len_mm)
 
         f_len_px = f_len_mm.ideal / self._pixelX
-        self.f_len = Parameter(ideal=f_len_px, stddev=f_len_mm._err_stddev, mean=f_len_mm._err_mean, name=f_len_mm.name, units='px')
+        self.f_len = Parameter(ideal=f_len_px, stddev=f_len_px*0.001, mean=0, name=f_len_mm.name, units='px')
 
-        self._num_stars = self.__set_est_num_stars()
-        
         self.reset_params()
 
         return
 
     def __repr__(self):
-        cname = "Camera: {} ({} Stars per frame)"\
-                "\n\t{}"\
+        cname = "Camera: {}"\
                 "\n\t{}"\
                 "\n\t{}"\
                 "\n\t{}"\
                 "\n\t{}\n".format(self.cam_name,
-                            self._num_stars,
                             repr(self.f_len),
-                            repr(self.ctr_acc),
                             repr(self.ppt_acc),
                             repr(self.array_tilt),
                             repr(self.distortion))
@@ -64,13 +58,13 @@ class StarTracker:
         js = json.load(open(self.camJSON))
         return js['CAMERA_NAME']
 
-    def _set_parameter(self, parameter:Parameter, name:str)->Parameter:
+    def __set_parameter(self, parameter:Parameter, name:str)->Parameter:
         if parameter is not None:
             return parameter
 
         return Parameter._init_from_json(self.camJSON, name)
 
-    def _set_img_fov(self, f_len_mm)->float:
+    def __set_img_fov(self, f_len_mm)->float:
 
         f_len = f_len_mm
 
@@ -89,16 +83,12 @@ class StarTracker:
 
         return fov
 
-    def __set_est_num_stars(self)->float:
-        return 4
-
     def reset_params(self)->None:
         self.f_len.reset()
-        self.ctr_acc.reset()
         self.ppt_acc.reset()
         self.array_tilt.reset()
         self.distortion.reset()
         return
     
     def all_params(self)->tuple[Parameter]:
-        return [self.f_len, self.array_tilt, self.ctr_acc, self.distortion, self.ppt_acc]
+        return [self.f_len, self.array_tilt, self.distortion, self.ppt_acc]

@@ -36,8 +36,8 @@ class Projection:
         self.quat_real:np.ndarray = self.__random_quat()
 
         frame:pd.DataFrame = self.__generate_px_position(num)
-        frame['DEV_X'] = [self.dev.modulate() for _ in range(num)]
-        frame['DEV_Y'] = [self.dev.modulate() for _ in range(num)]
+        frame['DEV_X'] = self.dev.modulate(num) 
+        frame['DEV_Y'] = self.dev.modulate(num)
         frame['CV_REAL'] = frame.apply(self.__px_to_cv, axis=1, args=(False,))
         frame['CV_EST'] = frame.apply(self.__px_to_cv, axis=1, args=(True,))
         frame['ECI_REAL'] = frame['CV_REAL'].apply(self.__quat_mult)

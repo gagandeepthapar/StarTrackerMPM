@@ -21,8 +21,6 @@ CUBESATS = os.path.join(curFile, 'utils/', 'celestrakCubeSats.json')
 ACTIVESATS = os.path.join(curFile, 'utils/', 'celestrakActiveSats.json')
 
 """ SATELLITE CONFIGS """
-CUBESAT1U = os.path.join(curFile, 'utils/', 'cubesat1UMaterial.json')
-CUBESAT3U = os.path.join(curFile, 'utils/', 'cubesat3UMaterial.json')
 TEMP_DATA = os.path.join(curFile, 'utils/', 'TEMPERATURE_DATA.pkl')
 
 """ CATALOG INFO """

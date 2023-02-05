@@ -76,6 +76,9 @@ class Projection:
 
         return np.linalg.norm(diff)
 
+    def get_attitude(self)->np.ndarray:
+        return None
+
     def __set_parameter(self, param:Parameter, paramFP:str)->Parameter:
         if param is not None:
             return param

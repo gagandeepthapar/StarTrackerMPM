@@ -12,7 +12,6 @@ from scipy.integrate import solve_ivp
 
 import constants as c
 
-
 @dataclass
 class StateVector:
     rx:float

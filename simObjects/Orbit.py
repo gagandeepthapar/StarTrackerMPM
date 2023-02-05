@@ -311,7 +311,7 @@ class TempData:
         mean = np.mean(data['MEAN_TEMP'])
         std = np.mean(data['TEMP_STD'])
 
-        return Parameter(0, std, mean, name='TEMP', units='C')
+        return Parameter(mean, std, 0, name='TEMP', units='C')
     
     """ 
     Q ALBEDO

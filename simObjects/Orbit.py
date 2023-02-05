@@ -108,7 +108,7 @@ class OrbitData:
 
     mu = c.EARTHMU
     
-    def __init__(self,*, tlePD:pd.DataFrame=None, tleJSONFP:str=c.CUBESATS)->None:
+    def __init__(self, tlePD:pd.DataFrame=None, tleJSONFP:str=c.CUBESATS)->None:
 
         if tlePD is None:
             tlePD = self.__read_TLE_to_df(tleJSONFP)
@@ -119,8 +119,6 @@ class OrbitData:
         self.params['THETA'] = UniformParameter(0, 360, name='THETA', units='deg')
         self.params['INITIAL_TEMP'] = Parameter(20, 5, 0, name='INITIAL_TEMP', units='C')
         self.params['JULIAN_DATE'] = UniformParameter(c.J2000, c.J2000 + c.JYEAR, name='JULIAN_DATE', units='Day')
-        
-        self.all_params:list = [self.params[param].name for param in self.params]
 
         return
     
@@ -241,7 +239,7 @@ class TempData:
     def recalc_temp(self, mod_params:list=None, num_runs:int=10_000, *, min_alt:float=300)->pd.DataFrame:
 
         if mod_params is None:
-            mod_params = self.orbitdata.all_params
+            mod_params = list(self.orbitdata.params.keys())
         
         helper_df = pd.DataFrame()
 
@@ -297,7 +295,7 @@ class TempData:
 
         df = pd.DataFrame()
 
-        for param_name in self.orbitdata.all_params:
+        for param_name in self.orbitdata.params:
             param_cls = self.orbitdata.params[param_name]
             if param_name in mod_params:
                 df[param_name] = param_cls.modulate(num_runs)
@@ -474,7 +472,6 @@ class Orbit:
 
         self.orbitData:OrbitData = orbitData
         self.tempData:TempData = tempData
-        self.params = {}
 
         self.inc:Parameter = self.__set_parameter(incParam, "INC")
         self.ecc:Parameter = self.__set_parameter(eccParam, "ECC")
@@ -486,10 +483,18 @@ class Orbit:
         self.theta = UniformParameter(0, 360, 'THETA', c.DEG)
         self.jd = UniformParameter(c.J2000, c.J2000+365.25, 'JULIAN_DATE', 'days')
 
-        self.params = [self.inc, self.ecc, self.semi, self.temp, self.arg, self.raan, self.theta, self.jd]
-        self.randomize()
-        
+        self.params = {
+                        'INC':self.inc,
+                        'ECC':self.ecc,
+                        'SEMI':self.semi,
+                        'TEMP':self.temp,
+                        'ARG':self.arg,
+                        'RAAN':self.raan,
+                        'THETA':self.theta,
+                        'JULIAN_DATE':self.jd
+                      }
 
+        self.data = self.randomize()
         self.name = name
 
         return
@@ -501,11 +506,17 @@ class Orbit:
                 '\n\t{}'.format(self.name,self.inc, self.ecc, self.semi)
         return name
 
-    def randomize(self, num:int=10_000)->None:
+    def randomize(self, mod_params:list=None, num:int=10_000)->None:
         df = pd.DataFrame()
 
-        for param in self.params:
-            df[param.name] = param.modulate(num)
+        if mod_params is None:
+            mod_params = list(self.params.keys())
+
+        for param_name in self.params:
+            if param_name in mod_params:
+                df[param_name] = self.params[param_name].modulate(num)
+            else:
+                df[param_name] = self.ideal*np.ones(num)
 
         return df
   
@@ -525,183 +536,3 @@ class Orbit:
             return self.tempData.temp_param
 
         return self.orbitData.params[name]
-
-
-""" """
-
-""" """
-
-def calc_state(row, mu:int=c.EARTHMU):
-    ecc = row['ECC']
-    inc = row['INC']
-    a = row['SEMI']
-    raan = row['RAAN']
-    theta = row['THETA']
-    arg = row['ARG']
-    
-    __R1 = lambda theta: np.array([[1, 0, 0], [0, c.cosd(theta), c.sind(theta)], [0, -c.sind(theta), c.cosd(theta)]])
-    __R3 = lambda theta: np.array([[c.cosd(theta), c.sind(theta), 0], [-c.sind(theta), c.cosd(theta), 0], [0, 0, 1]]) 
-
-    h = np.sqrt(a * mu * (1 - ecc**2))
-
-    peri_r = h**2 / mu * (1/(1 + ecc*c.cosd(theta))) * np.array([[c.cosd(theta)],[c.sind(theta)], [0]])
-
-    Q_bar = __R3(arg) @ __R1(inc) @ __R3(raan)
-
-    r = np.transpose(Q_bar) @ peri_r
-    return r
-
-def solar_line_of_sight(row)->bool:
-
-    julianDate = row['JULIAN_DATE']
-    position = row['POS']
-
-    r_earth_sun = spos(julianDate)
-    r_earth_sc = position
-
-    theta = np.arccos(np.dot(r_earth_sun, r_earth_sc)/(np.linalg.norm(r_earth_sun)*np.linalg.norm(r_earth_sc)))
-    thetaA = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sun)))
-    thetaB = np.arccos(c.EARTHRAD/(np.linalg.norm(r_earth_sc)))
-
-    return theta <= (thetaA + thetaB)
-
-def test_temp(row):
-
-    # print(type(row))
-
-    T = row['PERIOD']
-    eT = row['EC_TIME']
-
-    tA = (T-eT)/2
-    tB = tA + eT
-
-    def __temp_diffeq(t, state):
-
-        if t <= tA:
-            Q = row['Q_TOT']
-        
-        elif t <= tB:
-            Q = row['Q_IR'] + row['Q_ALB']
-        
-        else:
-            Q = row['Q_TOT']
-        
-        return (-1*c.STEFBOLTZ*row['AREA']*row['EMI']*state**4 + Q)/961
-
-    sol = solve_ivp(__temp_diffeq, (0, T), [273.15+row['INITIAL_TEMP']], t_eval=np.linspace(0, T, 100), rtol=1e-5, atol=1e-5)
-    temps = sol['y'][0] 
-
-    row['MT'] = np.mean(temps)
-    row['ST'] = np.std(temps)
-
-    return row
-
-def test_apply(row, const):
-    print(type(row))
-    return row.A * (sum(row) + const)
-
-
-def test_multi(df:pd.DataFrame):
-    return df.A+3, df.B+4
-
-if __name__ == '__main__':
-
-    # N = 1_000
-    # df = pd.DataFrame()
-    # df['A'] = np.zeros(N)
-    # df['B'] = np.ones(N)
-    # df['C'] = 2*np.ones(N)
-
-    # print(df)
-
-    # tc = TempData()
-    # tc.save_frame()
-    # print(tc.temp_param)
-    # print(tc.params)
-    # print(tc.temp_data)
-    # print(tc.helper_data)
-    # tc.recalc_temp(mod_params=[tc.orbitdata.params['ECC']])
-
-    # od = OrbitData()
-    # l = []
-    # for param in od.params:
-    #     l.append(od.params[param])
-
-    # print(l)
-
-    # N = 1_000
-    # M = 0.5
-    # S = 0.15
-    # R = 0.8
-
-    # r = np.random.uniform(0, 1, N)
-    # cst = 1/(S*np.sqrt(2*np.pi))
-    # # nd = np.exp(-0.5*((r - M)/S)**2) * cst
-    # # ind = R - np.array([np.min([R,x]) for x in nd])
-
-    # to_norm = lambda x: np.exp(-0.5*((x - M)/S)**2) * cst
-    # to_vf = lambda x: R - np.min([R, x])
-
-    o = Orbit()
-
-
-    # df:pd.DataFrame = o.randomize(num=N)
-    
-    # df['PERIOD'] = df['SEMI']**1.5 * 2*np.pi /np.sqrt(c.EARTHMU)
-    # df['INITIAL_TEMP'] = np.random.normal(20, 5, len(df.index))
-    # df['ALPHA'] = np.random.normal(0.5, 0.1, len(df.index))
-    # df['EMI'] = np.random.normal(0.5, 0.1, len(df.index))
-    # df['AREA'] = 6*np.random.normal(0.01, 0.0001, len(df.index))
-    # f = to_norm(np.random.uniform(0, 1, len(df.index)))
-    # vf = np.array([to_vf(x) for x in f])
-    # df['VF'] = vf 
-    # df['Q_ALB'] = df['ALPHA']*df['AREA']*c.TEMP_GAMMA*c.EARTHFLUX*df['VF']
-    # df['POS'] = df['SEMI'] * (1-df['ECC']**2)/(1+df['ECC']*np.cos(np.deg2rad(df['THETA'])))
-    # df['Q_H'] = df['POS']/c.EARTHRAD
-    # df['Fa'] = 1/(df['Q_H']**2)
-    # df['Fb'] = -np.sqrt(df['Q_H']**2 - 1)/(np.pi*df['Q_H']**2) + 1/np.pi * np.arctan(1/(np.sqrt(df['Q_H']**2-1)))
-    # df['Q_IR'] = (1/3*df['EMI']*df['AREA']*c.EARTHFLUX*df['Fa']) \
-    #             + (2/3*df['EMI']*df['AREA']*c.EARTHFLUX*df['Fb'])
-    # df['SVECX'], df['SVECY'], df['SVECZ'] = spos(df['JULIAN_DATE'].values)
-    # df['RA'], df['DEC'] = vec2radec([df['SVECX'], df['SVECY'], df['SVECZ']])
-    # df['BETA'] = beta_ang([df['RA'], df['DEC']], df['RAAN'], df['INC'])
-    # df['SEMI'] = df['SEMI']
-    # df['T'] = df['PERIOD']
-    # df['EC_TIME'] = 0
-    # df['EC_FLAG'] = np.abs(np.sin(df['BETA'])) < c.EARTHRAD/df['POS']
-    
-    # # broken vvv
-    # df.loc[df['EC_FLAG'], 'EC_TIME'] = eclipse_time(df['BETA'], df['T'], df['POS'])
-    
-    # df['EC_TIME'] = df['EC_TIME']
-    # df['EC_FRAC'] = df['EC_TIME']/df['PERIOD']
-    # df['Q_SOL'] = df['ALPHA'] * 0.4*df['AREA'] * c.SOLARFLUX * (1-df['EC_FRAC'])
-    # df['Q_TOT'] = df['Q_ALB'] + df['Q_IR'] + df['Q_SOL']
-    # df = df[df['SEMI']* (1-df['ECC']) > c.EARTHRAD]
-    # df = df.apply(test_temp, axis=1) - 273.15
-    # print(df)
-    # print(df.columns)
-
-    # df['MEAN_TEMP'] = x.apply(np.mean)
-    # df['TEMP_STD'] = x.apply(np.std)
-
-    # # end = time.perf_counter() - start
-
-    # # print(df)
-    # # print(df)
-    # # print('\nTIME: {}\n'.format(end))
-
-    # # print(df.mean())
-    # # print(df.std())
-    # # print(df.skew())
-    
-    # # print('no ec: {}'.format(len(df[df['EC_TIME'] == 0].index)))
-
-
-    # # fig = plt.figure()
-    # # ax = fig.add_subplot(211)
-    # # ax2 = fig.add_subplot(212)
-
-    # # ax.hist(df['MEAN_TEMP'], bins=100)
-    # # ax2.hist(df['TEMP_STD'], bins=100)
-    # # plt.show()

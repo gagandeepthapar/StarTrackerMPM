@@ -1,23 +1,31 @@
 import sys
+
 sys.path.append(sys.path[0] + '/..')
+
+from json import load as jsonload
 
 import numpy as np
 import pandas as pd
-
 from Parameter import Parameter, UniformParameter
 
 import constants as c
-from json import load as jsonload
+
 
 class Projection:
-    def __init__(self, Centroid_Deviation:Parameter=None, * ,
+    def __init__(self, Centroid_Deviation:Parameter=None,
+                       img_width:float=None,
+                       img_height:float=None,
+                       img_focal:float=None, * ,
                 centroidFP:str=c.SIMPLE_CENTROID, cameraFP:str=c.ALVIUM_CAM, 
                 numStars:Parameter=Parameter(7, 2, 0, name="NUM_STARS", units="", retVal=lambda x: np.max([1,int(np.round(x))])))->None:
 
         self.dev = self.__set_parameter(Centroid_Deviation, centroidFP)
 
         self.numStars = numStars
-        self.imWidth, self.imHeight, self.focal = self.__read_camera(cameraFP)
+
+        self.imWidth = self.__set_img_params(img_width, "IMAGE_WIDTH", cameraFP)
+        self.imHeight = self.__set_img_params(img_height, "IMAGE_HEIGHT", cameraFP)
+        self.focal = self.__set_img_params(img_focal, "FOCAL_LENGTH", cameraFP)
 
         self.image_x = UniformParameter(0, self.imWidth, 'IMAGE_X', units='px')
         self.image_y = UniformParameter(0, self.imHeight, 'IMAGE_Y', units='px')
@@ -91,6 +99,19 @@ class Projection:
         
         df = pd.DataFrame({'IMAGE_X':imx, 'IMAGE_Y':imy})
         return df
+
+    def __set_img_params(self, value:float, name:str, cam_fp:str)->float:
+
+        if value is not None:
+            return value
+        
+        with open(cam_fp) as fp_open:
+            fp = jsonload(fp_open)
+        
+        if name == 'FOCAL_LENGTH':
+            return fp[name+"_IDEAL"]/fp["PIXEL_HEIGHT"]
+
+        return fp[name]
 
     def __read_camera(self, fp:str)->tuple[float]:
         with open(fp) as fp_open:

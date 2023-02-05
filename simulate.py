@@ -11,7 +11,7 @@ import constants as c
 from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
 import monteCarlo as mc
-import factorAnalysis as fac
+import sensitivityAnalysis as fac
 
 def _est_StarTracker_Accuracy(mean:float, stddev:float, num_stars:float)->tuple[float]:
 
@@ -73,7 +73,7 @@ def parseArguments()->argparse.Namespace:
 if __name__ == '__main__':
     args = parseArguments()
 
-    ideal_cam = StarTracker(cam_json=c.IDEAL_CAM)
+    # ideal_cam = StarTracker(cam_json=c.IDEAL_CAM)
     sim_cam = StarTracker(cam_json=c.SUNETAL_CAM)
     alvium_cam = StarTracker(cam_json=c.ALVIUM_CAM)
 

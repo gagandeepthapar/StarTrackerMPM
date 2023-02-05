@@ -18,7 +18,7 @@ class Parameter:
         self.__err_mean = mean
         self.__err_stddev = stddev
         self._color = color
-        self.range = self._err_mean + (3*self._err_stddev)
+        self.range = self.__err_mean + (3*self.__err_stddev)
         self.minRange = self.ideal - self.range
         self.maxRange = self.ideal + self.range
 
@@ -39,7 +39,7 @@ class Parameter:
         return pname 
 
     def modulate(self, num:int=1)->float:
-        values = np.apply_along_axis(self.retVal, 0, np.random.normal(loc=self.__err_mean, scale=self.__err_stddev, size=num)) 
+        values = np.apply_along_axis(self.retVal, 0, np.random.normal(loc=self.__err_mean, scale=self.__err_stddev, size=num)+self.ideal) 
         self.value = np.mean(values)
         return values
     
@@ -79,6 +79,7 @@ class UniformParameter:
         name = f'{self.color}{self.name}: {self.low} - {self.high} {self.units}{c.DEFAULT}'
         return name
     
-    def modulate(self)->float:
-        self.value = np.random.uniform(self.low, self.high) 
-        return self.value
+    def modulate(self, num:int=1)->float:
+        values = np.random.uniform(self.low, self.high, num)
+        self.value = np.mean(values)
+        return values

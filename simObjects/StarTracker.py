@@ -41,6 +41,7 @@ class StarTracker:
 
         self.params = {param.name:param for param in self.__all_params()}
 
+        self.data = self.randomize()
         self.reset_params()
 
         return
@@ -89,6 +90,25 @@ class StarTracker:
         fov = np.rad2deg(2*np.arctan(x/(2*f_len.value)))
 
         return fov
+
+    def randomize(self, mod_param:list=None, num:int=1_000)->pd.DataFrame:
+
+        df = pd.DataFrame()
+
+        if mod_param is None:
+            mod_param = list(self.params.keys())
+
+        for param_name in self.params:
+            if param_name in mod_param:
+                df[param_name] = self.params[param_name].modulate(num)
+            else:
+                df[param_name] = self.params[param_name].ideal * np.ones(num)
+
+            df['D_'+param_name] = df[param_name] - self.params[param_name].ideal
+
+        self.data = df
+
+        return df
 
     def reset_params(self)->None:
         self.f_len.reset()

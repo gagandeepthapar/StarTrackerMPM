@@ -63,7 +63,7 @@ class StarTracker:
         if parameter is not None:
             return parameter
 
-        return Parameter._init_from_json(self.camJSON, name)
+        return Parameter.init_from_json(self.camJSON, name)
 
     def __set_img_fov(self, f_len_mm)->float:
 

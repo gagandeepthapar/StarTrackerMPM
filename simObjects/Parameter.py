@@ -50,19 +50,20 @@ class Parameter:
     def get_ideal_param(self)->None:
         return Parameter(ideal=self.ideal, stddev=0, mean=0, name="IDEAL_"+self.name)
 
-    def _init_from_json(fp:str,name:str)->None:
+    def init_from_json(fp:str,name:str)->None:
 
         with open(fp) as fp_open:
             camDict = json.load(fp_open)
             
-        print(camDict)
-
         ideal = camDict[name+"_IDEAL"]
         mean = camDict[name+"_MEAN"]
         stddev = camDict[name+"_STDDEV"]/3
         units = camDict[name+"_UNITS"]
 
         return Parameter(ideal=ideal, stddev=stddev, mean=mean, name=name, units=units)
+    
+    def get_prob_distribution(self)->tuple[float]:
+        return self.__err_mean, self.__err_stddev
 
 class UniformParameter:
 

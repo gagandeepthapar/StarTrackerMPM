@@ -470,20 +470,11 @@ class Orbit:
         self.semi:Parameter = self.__set_parameter(semiParam, "SEMI")
         self.temp:Parameter = self.__set_parameter(tempParam, "TEMP")
 
-        self.arg = UniformParameter(0, 360, 'ARG', c.DEG)
-        self.raan = UniformParameter(0, 360, 'RAAN', c.DEG)
-        self.theta = UniformParameter(0, 360, 'THETA', c.DEG)
-        self.jd = UniformParameter(c.J2000, c.J2000+365.25, 'JULIAN_DATE', 'days')
-
         self.params = {
                         'INC':self.inc,
                         'ECC':self.ecc,
                         'SEMI':self.semi,
                         'TEMP':self.temp,
-                        'ARG':self.arg,
-                        'RAAN':self.raan,
-                        'THETA':self.theta,
-                        'JULIAN_DATE':self.jd
                       }
 
         self.data = self.randomize()
@@ -510,6 +501,8 @@ class Orbit:
             else:
                 df[param_name] = self.ideal*np.ones(num)
 
+        df['D_TEMP'] = df['TEMP'] - self.params['TEMP'].ideal
+        self.data = df
         return df
   
     def __set_parameter(self, param:Parameter, name:str)->Parameter:

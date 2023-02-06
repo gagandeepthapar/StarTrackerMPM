@@ -1,6 +1,7 @@
 import sys
 
 import numpy as np
+import pandas as pd
 
 sys.path.append(sys.path[0] + '/..')
 import json

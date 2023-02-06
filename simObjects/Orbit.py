@@ -7,7 +7,7 @@ sys.path.append(sys.path[0] + '/..')
 from dataclasses import dataclass
 from json import load as jsonload
 
-from Parameter import Parameter, UniformParameter
+from .Parameter import Parameter, UniformParameter
 from scipy.integrate import solve_ivp
 
 import constants as c

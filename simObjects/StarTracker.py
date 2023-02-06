@@ -30,10 +30,16 @@ class StarTracker:
         self.distortion = self.__set_parameter(distortion, "DISTORTION")
 
         f_len_mm = self.__set_parameter(focal_length, "FOCAL_LENGTH")
+        f_len_mm_mean, f_len_mm_std = f_len_mm.get_prob_distribution()
         self._fov = self.__set_img_fov(f_len_mm=f_len_mm)
 
         f_len_px = f_len_mm.ideal / self._pixelX
-        self.f_len = Parameter(ideal=f_len_px, stddev=f_len_px*0.001, mean=0, name=f_len_mm.name, units='px')
+        f_mean_px = f_len_mm_mean / self._pixelX
+        f_std_pd = f_len_mm_std / self._pixelX
+
+        self.f_len = Parameter(ideal=f_len_px, stddev=f_std_pd, mean=f_mean_px, name=f_len_mm.name, units='px')
+
+        self.params = {param.name:param for param in self.__all_params()}
 
         self.reset_params()
 

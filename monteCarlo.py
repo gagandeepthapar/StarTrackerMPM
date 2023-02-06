@@ -74,7 +74,7 @@ def monteCarlo(cam:StarTracker, *params:Parameter, numRuns:int=1_000, saveFrameP
 
     # if no params were passed in then modulate all params
     if len(params) == 0:
-        params = (cam.f_len, cam.array_tilt, cam.distortion, cam.ppt_acc, cam.ctr_acc)
+        params = (cam.f_len, cam.array_tilt, cam.distortion, cam.ppt_acc)
 
     for param in cam.all_params():
         if param in params:
@@ -116,9 +116,6 @@ def handle_arguments(args:argparse.Namespace, camera:StarTracker)->None:
         
         if args.dist:
             params.append(camera.distortion)
-        
-        if args.ctr:
-            params.append(camera.ctr_acc)
 
         if args.ppt:
             params.append(camera.ppt_acc)

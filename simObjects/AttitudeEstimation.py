@@ -6,7 +6,7 @@ from json import load as jsonload
 
 import numpy as np
 import pandas as pd
-from Parameter import Parameter, UniformParameter
+from .Parameter import Parameter, UniformParameter
 
 import constants as c
 

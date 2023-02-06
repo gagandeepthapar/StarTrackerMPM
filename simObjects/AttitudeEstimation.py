@@ -30,14 +30,14 @@ class Projection:
         self.image_x = UniformParameter(0, self.imWidth, 'IMAGE_X', units='px')
         self.image_y = UniformParameter(0, self.imHeight, 'IMAGE_Y', units='px')
 
-        self.randomize()
+        self.frame = self.randomize()
         return
 
     def __repr__(self)->str:
         name = 'PROJECTION @ {}'.format(self.quat_real)
         return name
     
-    def randomize(self, num:int=None)->None:
+    def randomize(self, num:int=None)->pd.DataFrame:
         if num is None:
             num = self.numStars.modulate()
         
@@ -51,7 +51,7 @@ class Projection:
         frame['ECI_REAL'] = frame['CV_REAL'].apply(self.__quat_mult)
 
         self.frame = frame
-        return 
+        return frame
 
     def quat_to_ra_dec(self, q:np.ndarray)->np.ndarray:
         q1 = q[0]
@@ -93,14 +93,11 @@ class Projection:
         return Parameter(ideal, std, mean, name="CENTROID_ACCURACY", units=units)
 
     def __generate_px_position(self, num:int)->pd.DataFrame:
-        imx = np.empty(num, dtype=float)
-        imy = np.empty(num, dtype=float)
 
-        for i in range(num):
-            imx[i] = self.image_x.modulate()
-            imy[i] = self.image_y.modulate()
+        df = pd.DataFrame()
+        df['IMAGE_X'] = self.image_x.modulate(num)
+        df['IMAGE_Y'] = self.image_y.modulate(num)
         
-        df = pd.DataFrame({'IMAGE_X':imx, 'IMAGE_Y':imy})
         return df
 
     def __set_img_params(self, value:float, name:str, cam_fp:str)->float:
@@ -115,16 +112,7 @@ class Projection:
             return fp[name+"_IDEAL"]/fp["PIXEL_HEIGHT"]
 
         return fp[name]
-
-    def __read_camera(self, fp:str)->tuple[float]:
-        with open(fp) as fp_open:
-            file = jsonload(fp_open)
-        
-        imX = file['IMAGE_WIDTH']
-        imY = file['IMAGE_HEIGHT']
-        f = file['FOCAL_LENGTH_IDEAL']/file['PIXEL_HEIGHT']
-        return imX, imY, f
-    
+  
     def __px_to_cv(self, row:pd.Series, devFlag:bool)->np.ndarray:
         x = row['IMAGE_X']
         y = row['IMAGE_Y']
@@ -254,3 +242,4 @@ class QUEST(Projection):
         B = -2*(a + b)*lam
         C = -c
         return A + B + C
+

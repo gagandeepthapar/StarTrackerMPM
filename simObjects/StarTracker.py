@@ -17,12 +17,12 @@ class StarTracker:
                        focal_length:Parameter=None,
                        array_tilt:Parameter=None,
                        distortion:Parameter=None,
-                       cam_name:str=None,
+                       cam_name:str='IDEAL_CAM',
                        cam_json:str=c.IDEAL_CAM)->None:
 
         # open cam property file
         self.camJSON = cam_json
-        self.cam_name = self._set_name(cam_name)
+        self.cam_name = self.__set_name(cam_name)
 
         # set properties of camera
         self.ppt_acc = self.__set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
@@ -52,7 +52,7 @@ class StarTracker:
 
         return cname
 
-    def _set_name(self, cam_name:str)->str:
+    def __set_name(self, cam_name:str)->str:
         if cam_name is not None:
             return cam_name
         

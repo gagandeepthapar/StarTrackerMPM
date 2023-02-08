@@ -104,8 +104,8 @@ class StarTracker:
             else:
                 df[param_name] = self.params[param_name].ideal * np.ones(num)
 
-            df['D_'+param_name] = df[param_name] - self.params[param_name].ideal
-
+        # only parameter that is not 0 mean; need to know the delta 
+        df['D_FOCAL_LENGTH'] = df['FOCAL_LENGTH'] - self.f_len.ideal
         self.data = df
 
         return df
@@ -117,5 +117,5 @@ class StarTracker:
         self.distortion.reset()
         return
     
-    def all_params(self)->tuple[Parameter]:
+    def __all_params(self)->tuple[Parameter]:
         return [self.f_len, self.array_tilt, self.distortion, self.ppt_acc]

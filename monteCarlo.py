@@ -8,7 +8,10 @@ from alive_progress import alive_bar
 import constants as c
 from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
-import simulate as sim
+import _simulate as sim
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _dispMonteCarloResults(starframe:pd.DataFrame, numStars:float)->None:
 

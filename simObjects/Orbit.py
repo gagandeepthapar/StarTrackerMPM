@@ -12,6 +12,10 @@ from scipy.integrate import solve_ivp
 
 import constants as c
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 @dataclass
 class StateVector:
     rx:float
@@ -510,11 +514,11 @@ class Orbit:
             return param
         
         if self.orbitData is None:
-            print('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
+            logger.info('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
             self.orbitData = OrbitData()
 
         if self.tempData is None:
-            print('{}Generating Temp Data{}'.format(c.YELLOW, c.DEFAULT))
+            logger.info('{}Generating Temp Data{}'.format(c.YELLOW, c.DEFAULT))
             self.tempData = TempData(orbitData=self.orbitData)
         
         if name == 'TEMP':

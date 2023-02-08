@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import pandas as pd
 
+from simObjects.Parameter import Parameter
 from simObjects.AttitudeEstimation import QUEST, Projection
 from simObjects.Orbit import Orbit
 from simObjects.StarTracker import StarTracker
@@ -13,12 +14,12 @@ import time
 class Simulation:
 
     def __init__(self, camera:StarTracker=StarTracker(cam_json=c.SUNETAL_CAM),
-                       software: Projection=QUEST(),
+                       centroid_accuracy:Parameter=Parameter(0, 0.1, 0, name='Centroid_Accuracy', units='px'),
                        orbit:Orbit=Orbit(),
                        num_runs:int=1_000)->None:
 
         self.star_tracker = camera
-        self.centroid = software
+        self.centroid = centroid_accuracy
         self.orbit = orbit
 
         self.sim_data = self.generate_data(num_runs)
@@ -30,7 +31,12 @@ class Simulation:
         odata = self.orbit.randomize(num=num_runs)
         fdata = self.star_tracker.randomize(num=num_runs)
 
-        data = pd.concat([odata, fdata], axis=1)
+        cdata = pd.DataFrame()        
+        cdata['BASE_DEV_X'] = self.centroid.modulate(num_runs)
+        cdata['BASE_DEV_Y'] = self.centroid.modulate(num_runs)
+
+
+        data = pd.concat([odata, fdata, cdata], axis=1)
 
         self.sim_data = data
         print(time.perf_counter() - s)
@@ -53,6 +59,8 @@ def parse_arguments()->argparse.Namespace:
 
 if __name__ == '__main__':
     args = parse_arguments()
-    print(args)
+    # print(args)
     sim = Simulation(num_runs=args.NumberRuns)
-    print(sim.sim_data)
+    print(sim.sim_data.columns) 
+    print(sim.sim_data.head())
+    

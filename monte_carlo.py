@@ -14,7 +14,7 @@ from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
 
-logger = logging.getLogger('monte_carlo')
+logger = logging.getLogger(__name__)
 
 class MonteCarlo(Simulation):
 

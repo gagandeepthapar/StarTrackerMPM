@@ -1,17 +1,11 @@
 import argparse
-import warnings
-from datetime import datetime
 
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-from alive_progress import alive_bar
 
 import constants as c
-from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
-import monteCarlo as mc
-import sensitivityAnalysis as fac
+import _monteCarlo as mc
+import _sensitivityAnalysis as fac
 
 def _est_StarTracker_Accuracy(mean:float, stddev:float, num_stars:float)->tuple[float]:
 

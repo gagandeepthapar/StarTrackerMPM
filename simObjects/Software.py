@@ -37,6 +37,15 @@ class Software:
         self.data = df
         return df
 
+    def ideal(self, num:int=10_000)->pd.DataFrame:
+
+        df = pd.DataFrame()
+        df['BASE_DEV_X'] = self.centroid.reset(num)
+        df['BASE_DEV_Y'] = self.centroid.reset(num)
+
+        self.data = df
+        return df
+
     def __set_centroid(self, param:Parameter, json_path:str)->Parameter:
         if param is not None:
             return param

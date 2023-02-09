@@ -112,6 +112,19 @@ class StarTracker:
 
         return df
 
+    def ideal(self, num:int=1_000)->pd.DataFrame:
+
+        df = pd.DataFrame()
+
+        for param_name in self.params:
+            df[param_name] = self.params[param_name].reset(num)
+
+        # only parameter that is not 0 mean; need to know the delta 
+        df['D_FOCAL_LENGTH'] = np.zeros(len(df.index))
+        self.data = df
+
+        return df
+
     def reset_params(self)->None:
         self.f_len.reset()
         self.ppt_acc.reset()

@@ -45,9 +45,10 @@ class Parameter:
         self.value = np.mean(values)
         return values
     
-    def reset(self)->float:
+    def reset(self, num:int=1)->float:
+        values = self.ideal * np.ones(num)
         self.value = self.ideal
-        return self.value
+        return values
 
     def get_ideal_param(self)->None:
         return Parameter(ideal=self.ideal, stddev=0, mean=0, name="IDEAL_"+self.name)

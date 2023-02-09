@@ -13,6 +13,7 @@ from simObjects.Software import Software
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -89,4 +90,3 @@ class Simulation:
     def __generate_data(self)->None: # method to be overloaded
         raise RuntimeError('generate data not implemented for {} class'.format(type(self)))
         return
-    

@@ -462,7 +462,7 @@ class Orbit:
                        semiParam:Parameter=None,
                        tempParam:Parameter=None,
                        *,
-                       name:str = None,
+                       name:str = 'CubeSat_Data',
                        orbitData:OrbitData=None,
                        tempData:TempData=None)->None:
 

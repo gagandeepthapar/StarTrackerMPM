@@ -9,7 +9,9 @@ import pandas as pd
 from .Parameter import Parameter, UniformParameter
 
 import constants as c
+import logging
 
+logger = logging.getLogger(__name__)
 
 class Projection:
     def __init__(self, Centroid_Deviation:Parameter=None,

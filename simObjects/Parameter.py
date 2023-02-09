@@ -6,7 +6,9 @@ sys.path.append(sys.path[0] + '/..')
 import json
 
 import constants as c
+import logging
 
+logger = logging.getLogger(__name__)
 
 class Parameter:
 

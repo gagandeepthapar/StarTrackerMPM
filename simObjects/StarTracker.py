@@ -9,7 +9,9 @@ import json
 import constants as c
 
 from .Parameter import Parameter
+import logging
 
+logger = logging.getLogger(__name__)
 
 class StarTracker:
 

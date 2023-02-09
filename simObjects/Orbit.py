@@ -514,11 +514,9 @@ class Orbit:
             return param
         
         if self.orbitData is None:
-            logger.info('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
             self.orbitData = OrbitData()
 
         if self.tempData is None:
-            logger.info('{}Generating Temp Data{}'.format(c.YELLOW, c.DEFAULT))
             self.tempData = TempData(orbitData=self.orbitData)
         
         if name == 'TEMP':

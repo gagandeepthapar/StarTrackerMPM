@@ -36,6 +36,8 @@ class StarTracker:
         self._fov = self.__set_img_fov(f_len_mm=f_len_mm)
 
         f_len_px = f_len_mm.ideal / self._pixelX
+        f_len_mean = f_len_mean / self._pixelX
+        f_len_std = f_len_std / self._pixelX
 
         self.f_len = Parameter(ideal=f_len_px, stddev=f_len_std, mean=f_len_mean, name=f_len_mm.name, units='px')
 

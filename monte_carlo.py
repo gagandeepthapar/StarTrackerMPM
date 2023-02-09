@@ -69,7 +69,7 @@ class MonteCarlo(Simulation):
 
                 if param == 'FOCAL_LENGTH':
                     f_len_real = self.sim_data['FOCAL_LENGTH'][0] - self.sim_data['D_FOCAL_LENGTH'][0]
-                    param_ax.axvline(f_len_real, color='r', label='True Focal Length')
+                    param_ax.axvline(f_len_real, color='r', label='True Focal Length ({})'.format(np.round(f_len_real,3)))
                     param_ax.legend()
                     
                 

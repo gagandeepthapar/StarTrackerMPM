@@ -10,7 +10,7 @@ from alive_progress import alive_bar
 import constants as c
 from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
-import simulate as sim
+import _simulate as sim
 
 def _plotSurfaceSimResults(starframe:pd.DataFrame, param:Parameter, savePlot:bool=False)->None:
     

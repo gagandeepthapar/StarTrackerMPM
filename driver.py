@@ -83,8 +83,6 @@ def setup_star_tracker(args_cam:str)->StarTracker:
 
     args_cam_upper = args_cam.upper()
 
-    logger.info(args_cam_upper)
-
     match args_cam_upper:
 
         case 'I' | 'IDEAL':
@@ -111,8 +109,6 @@ def setup_software(args_sw:str)->Software:
     """
 
     args_sw_upper = args_sw.upper()
-
-    logger.info(args_sw_upper)
 
     match args_sw_upper:
 

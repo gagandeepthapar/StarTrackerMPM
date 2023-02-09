@@ -81,12 +81,11 @@ class MonteCarlo(Simulation):
                                               np.round(self.sim_data['BASE_DEV_Y'].mean(),3),\
                                               np.round(self.sim_data['BASE_DEV_Y'].std(),3)))
                     
-
-
         return
     
     def __create_data(self)->pd.DataFrame:
 
+        # randomize all data from components
         f_data = self.camera.randomize(num=self.num_runs)
         c_data = self.centroid.randomize(num=self.num_runs)
         o_data = self.orbit.randomize(num=self.num_runs)

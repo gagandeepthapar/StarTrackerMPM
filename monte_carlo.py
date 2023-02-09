@@ -46,7 +46,7 @@ class MonteCarlo(Simulation):
         ax = fig.add_subplot()
 
         ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
-        # ax.set_ylabel('Number of Runs')
+        ax.set_ylabel('Number of Runs')
         ax.set_xlabel('Calculated Accuracy [arcsec]')
         ax.set_title('Star Tracker Accuracy: {} +/-{} arcsec:\n{:,} Runs'.\
                     format(np.round(self.sim_data['CALC_ACCURACY'].mean(),3),\
@@ -68,8 +68,7 @@ class MonteCarlo(Simulation):
                                           np.round(self.sim_data[param].std(), 3)))
 
                 if param == 'FOCAL_LENGTH':
-                    f_len_real = self.sim_data['FOCAL_LENGTH'][0] - self.sim_data['D_FOCAL_LENGTH'][0]
-                    param_ax.axvline(f_len_real, color='r', label='True Focal Length ({})'.format(np.round(f_len_real,3)))
+                    param_ax.axvline(self.camera.f_len.ideal, color='r', label='True Focal Length ({} px)'.format(np.round(self.camera.f_len.ideal,3)))
                     param_ax.legend()
                     
                 

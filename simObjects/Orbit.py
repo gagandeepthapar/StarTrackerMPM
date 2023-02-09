@@ -509,6 +509,17 @@ class Orbit:
         self.data = df
         return df
   
+    def ideal(self, num:int=10_000)->pd.DataFrame:
+
+        df = pd.DataFrame()
+
+        for param_name in self.params:
+            df[param_name] = self.params[param_name].reset(num)
+        
+        df['D_TEMP'] = np.zeros(len(df.index))
+        self.data = df
+        return df
+
     def __set_parameter(self, param:Parameter, name:str)->Parameter:
         if param is not None:
             return param

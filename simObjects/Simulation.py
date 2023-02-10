@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from copy import deepcopy
 
 import constants as c
 from simObjects.Software import Software
@@ -51,7 +52,7 @@ class Simulation:
         return '{} Data Points'.format(self.num_runs)
 
 
-    def run_sim(self, obj_func:callable)->pd.DataFrame:  # method to be overloaded
+    def run_sim(self, params:list[str], obj_func:callable)->pd.DataFrame:  # method to be overloaded
         raise RuntimeError('run_sim not implemented for {} class'.format(type(self)))
         return 
 
@@ -123,4 +124,28 @@ class Simulation:
 
     def __generate_data(self)->None: # method to be overloaded
         raise RuntimeError('generate data not implemented for {} class'.format(type(self)))
+        return
+
+class SimThread(threading.Thread):
+    
+    def __init__(self, simulation:Simulation, idx_start:int, idx_end:int, params:list[str], obj_func:callable, thread_num:int)->None:
+        threading.Thread.__init__(self)
+        self.thread_num = thread_num
+
+        self.thread_data:pd.DataFrame() = None
+
+        self.sim = deepcopy(simulation)
+        self.sim.num_runs = (idx_end - idx_start + 1)
+        self.sim.sim_data = self.sim.sim_data.iloc[idx_start:idx_end]
+
+        self.params = params
+        self.obj_func = obj_func
+        
+        return
+    
+    def run(self)->None:
+        logger.critical('Thread {}: Spinning Up'.format(self.thread_num))
+        self.sim.run_sim(self.params, self.obj_func)
+        self.thread_data = self.sim.sim_data
+        logger.warning('Thread {}: Spinning Down'.format(self.thread_num))
         return

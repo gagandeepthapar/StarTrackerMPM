@@ -9,15 +9,17 @@ import matplotlib.pyplot as plt
 import constants as c
 import monte_carlo as mc
 import sensitivity as sense
+from copy import deepcopy
 
 from simObjects.AttitudeEstimation import QUEST, Projection
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
-from simObjects.Simulation import Simulation
+from simObjects.Simulation import Simulation, SimThread
 from simObjects.Software import Software
 from simObjects.StarTracker import StarTracker
 
 DEFAULT_RUNS = 1_000
+THREAD_MAX = 10
 logger = logging.getLogger('driver')
 
 def set_logging_level(argument:str)->None:
@@ -53,7 +55,7 @@ def parse_arguments()->argparse.Namespace:
 
     parser.add_argument('-log', '--logger', metavar='', type=str, help='Set logging level: (D)ebug, (I)nfo, (W)arning, (E)rror, (C)ritical. Default INFO.', default='INFO')
 
-    # parser.add_argument('-T', '--threads', metavar='', type=int, nargs=1, help='Number of threads to split task. Default 1.', default=1)
+    parser.add_argument('-T', '--threads', metavar='', type=int, help='Number of threads to split task. Default 1, Max 10.', default=1)
     
     parser.add_argument('-sim', '--simulation', metavar='', type=str, help='Determine Sim Type: (M)onteCarlo or (S)ensitivityAnalysis. Default M, Monte Carlo Analysis.', default='M')
     parser.add_argument('-n', '--numberOfRuns', metavar='', type=int, help='Number of Runs (Monte Carlo) or Data Points Generated (Sensitivity Analysis). Default {:,}'.format(DEFAULT_RUNS), default=DEFAULT_RUNS)
@@ -192,6 +194,56 @@ def setup_params(sim_params:list[str])->list[str]:
 
     return named_params
 
+def __calc_thread_idx(args_thread:int, sim_idx:int)->list[tuple]:
+    """
+    generate list of start and end indices to slice dataframe 
+
+    Args:
+        args_thread (int): number of threads to spin up
+        sim_idx (int): total number of runs
+
+    Returns:
+        list[int]: list of start/end indices
+    """
+
+    args_thread = np.max([1, np.min([THREAD_MAX, np.abs(args_thread)])])    # calculate number of threads 1 <= T <= 10    
+    num_rows = sim_idx//args_thread
+
+    args_idx = [[i*num_rows, (i+1)*num_rows-1] for i in range(args_thread)]
+    args_idx[-1][-1] = sim_idx-1
+
+    return args_idx
+
+def run_simulation(args_thread:int, args_numruns:int, full_sim:Simulation, params:list[str], obj_func)->pd.DataFrame:
+    
+    args_idx = __calc_thread_idx(args_thread, args_numruns)
+    logger.critical(args_idx)
+
+    start = time.perf_counter()
+    if args_thread > 1:
+        threads = list()
+        cat_data = list()
+
+        for i, arg_idx in enumerate(args_idx):
+            thread = SimThread(full_sim, arg_idx[0], arg_idx[1], params, obj_func, i+1)
+            threads.append(thread)
+            thread.start()
+        
+        for i, thread in enumerate(threads):
+            thread.join()
+            cat_data.append(thread.thread_data)
+
+        sim.sim_data = pd.concat(cat_data, axis=0, ignore_index=True)
+        end = time.perf_counter()
+
+    else:
+        sim.run_sim(params, obj_func)
+        end = time.perf_counter()
+
+    logger.critical('\n\nTIME: {}\n\n'.format(end-start))
+
+    return sim
+
 if __name__ == '__main__':
     args = parse_arguments()    # parse command line arguments
 
@@ -213,7 +265,11 @@ if __name__ == '__main__':
     """ 
     RUN SIMULATION
     """
-    sim.run_sim(params)
+    run_simulation(args.threads, args.numberOfRuns, sim, params, sim.sun_etal_hardware_analysis)
+    # sim.run_sim(params)
+
+
+
     logger.info('\n{}'.format(sim.sim_data.columns))
     
     logger.debug('\n{}'.format(sim.sim_data))
@@ -227,3 +283,6 @@ if __name__ == '__main__':
     if args.plot:
         sim.plot_data(params)
         plt.show()
+
+    logger.critical(sim.sim_data)
+    logger.critical(sim.sim_data.iloc[1:5])

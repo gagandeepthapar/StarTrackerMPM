@@ -58,8 +58,17 @@ def parse_arguments()->argparse.Namespace:
     parser.add_argument('-sim', '--simulation', metavar='', type=str, help='Determine Sim Type: (M)onteCarlo or (S)ensitivityAnalysis. Default M, Monte Carlo Analysis.', default='M')
     parser.add_argument('-n', '--numberOfRuns', metavar='', type=int, help='Number of Runs (Monte Carlo) or Data Points Generated (Sensitivity Analysis). Default {:,}'.format(DEFAULT_RUNS), default=DEFAULT_RUNS)
     
-    parser.add_argument('-cam', '--camera', metavar='', type=str, help='Star Tracker Hardware: (I)deal, (S)un etal, (A)lvium, or path to JSON. Default Sun etal', default='S')
+    parser.add_argument('-cam', '--camera', metavar='', type=str, help='Star Tracker Hardware: (I)deal, (S)un etal, (A)lvium, (B)ad Camera, or path to JSON. Default Sun etal', default='S')
     parser.add_argument('-sw', '--software', metavar='', type=str, help='Centroid Software: (I)deal, (B)asic, (A)dvanced, or path to JSON. Default Basic', default='B')
+
+    parser.add_argument('-par', '--parameters', metavar='', type=str, nargs='*',
+                        help='Set parameters to analyze for Sensitivity Plot:\n \
+                            (F)ocal Length; \
+                            Focal (A)rray Inclination; \
+                            (C)entroid Accuracy; \
+                            (D)istortion; \
+                            (P)rincipal Point Deviation; \
+                            (T)emperature. Default Focal Length.', default='F')
 
     parser.add_argument('-p', '--plot', help='Plot Parameter/Input Data', action='store_true')
 
@@ -94,6 +103,9 @@ def setup_star_tracker(args_cam:str)->StarTracker:
         case 'A' | 'ALVIUM':
             return StarTracker(cam_json=c.ALVIUM_CAM, cam_name='Alvium')
         
+        case 'B' | 'BAD':
+            return StarTracker(cam_json=c.BAD_CAM, cam_name='Bad Camera')
+
         case _:
             return StarTracker(cam_json=args_cam)
 
@@ -150,6 +162,35 @@ def setup_sim_class(sim_type:str, run_count:int, * , cam:StarTracker, centroid:S
 
     return
 
+def setup_params(sim_params:list[str])->list[str]:
+
+    named_params = []
+
+    for param in sim_params:
+        param = param.upper()
+
+        match param:
+
+            case 'F' :
+                named_params.append('FOCAL_LENGTH')
+
+            case 'A':
+                named_params.append('FOCAL_ARRAY_INCLINATION')
+
+            case 'C':
+                named_params.append('BASE_DEV_X')
+                named_params.append('BASE_DEV_Y')
+
+            case 'D':
+                named_params.append('DISTORTION')
+        
+            case 'P':
+                named_params.append('PRINCIPAL_POINT_ACCURACY')
+        
+            case 'T':
+                named_params.append('TEMPERATURE')
+
+    return named_params
 
 if __name__ == '__main__':
     args = parse_arguments()    # parse command line arguments
@@ -159,6 +200,8 @@ if __name__ == '__main__':
     """
     camera = setup_star_tracker(args.camera)
     sw = setup_software(args.software)
+
+    params = setup_params(args.parameters)
 
     sim = setup_sim_class(args.simulation, args.numberOfRuns, cam=camera, centroid=sw, orbit=None)
     
@@ -170,7 +213,7 @@ if __name__ == '__main__':
     """ 
     RUN SIMULATION
     """
-    sim.run_sim()
+    sim.run_sim(params)
     logger.info('\n{}'.format(sim.sim_data.columns))
     
     logger.debug('\n{}'.format(sim.sim_data))
@@ -182,5 +225,5 @@ if __name__ == '__main__':
     PLOT SIMULATION RESULTS
     """
     if args.plot:
-        sim.plot_data(plot_params=args.plot)
+        sim.plot_data(params)
         plt.show()

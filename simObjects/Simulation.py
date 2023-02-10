@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 import constants as c
 from simObjects.Software import Software
@@ -32,7 +33,7 @@ class Simulation:
             self.camera = StarTracker(cam_json=c.IDEAL_CAM, cam_name='Ideal Camera')
 
         if self.centroid is None:
-            self.centroid = Software()
+            self.software = Software()
 
         if self.orbit is None:
             self.orbit = Orbit()
@@ -41,6 +42,8 @@ class Simulation:
             self.num_runs = 1_000
 
         self.sim_data = pd.DataFrame()
+
+        self.params = {**self.camera.params, **self.centroid.params, **self.orbit.params}
 
         return
 
@@ -54,7 +57,38 @@ class Simulation:
 
 
     def plot_data(self)->None: # method to be overloaded
-        raise RuntimeError('plot_data not implemented for {} class'.format(type(self)))
+        
+        fig = plt.figure()
+        ax = fig.add_subplot()
+
+        ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
+        ax.set_ylabel('Number of Runs')
+        ax.set_xlabel('Calculated Accuracy [arcsec]')
+        ax.set_title('Star Tracker Accuracy: {} +/-{} arcsec:\n{:,} Runs'.\
+                    format(np.round(self.sim_data['CALC_ACCURACY'].mean(),3),\
+                           np.round(self.sim_data['CALC_ACCURACY'].std(),3),
+                           self.num_runs))
+
+        param_fig = plt.figure()
+        param_fig.suptitle('Input Parameter Distribution')
+        size = (int(len(self.params)/2), 2)
+
+        for i, param in enumerate(list(self.params.keys())):
+
+            param_ax = param_fig.add_subplot(size[0], size[1], i+1)
+
+            if i%2 == 0: param_ax.set_ylabel('Number of Runs')
+
+            param_ax.hist(self.sim_data[param], bins=int(np.sqrt(self.num_runs)), label=param)
+            param_ax.set_title('{}: {} +/- {}'.\
+                                format(param.replace('_', ' ').title(),\
+                                        np.round(self.sim_data[param].mean(), 3),\
+                                        np.round(self.sim_data[param].std(), 3)))
+
+            if param == 'FOCAL_LENGTH':
+                param_ax.axvline(self.camera.f_len.ideal, color='r', label='True Focal Length ({} px)'.format(np.round(self.camera.f_len.ideal,3)))
+                param_ax.legend()
+                                        
         return
 
 

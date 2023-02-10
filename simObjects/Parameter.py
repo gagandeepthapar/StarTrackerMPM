@@ -31,7 +31,6 @@ class Parameter:
         self.units = units
 
         self.retVal = retVal
-        self.value = self.modulate()
         self.reset()
 
         return

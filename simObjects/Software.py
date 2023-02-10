@@ -18,21 +18,27 @@ class Software:
 
     def __init__(self, centroiding:Parameter=None, identification:Parameter=None, * , ctr_json:str=c.IDEAL_CENTROID):
 
-        self.centroid = self. __set_centroid(centroiding, ctr_json)
+        self.dev_x, self.dev_y = self. __set_centroid(centroiding, ctr_json)
         self.identification = self.__set_identification(identification)
 
         self.data = self.randomize()
 
+        self.params = {
+                        'BASE_DEV_X': self.dev_x,
+                        'BASE_DEV_Y': self.dev_y,
+                        # 'IDENTIFICATION': self.identification
+                      }
+
         return
 
     def __repr__(self)->str:
-        return 'Centroid: {}\nIdentification:{}'.format(self.centroid, self.identification)
+        return 'Centroid: {}\nIdentification:{}'.format(self.dev_x, self.identification)
 
     def randomize(self, num:int=1)->pd.DataFrame:
     
         df = pd.DataFrame()
-        df['BASE_DEV_X'] = self.centroid.modulate(num)
-        df['BASE_DEV_Y'] = self.centroid.modulate(num)
+        df['BASE_DEV_X'] = self.dev_x.modulate(num)
+        df['BASE_DEV_Y'] = self.dev_y.modulate(num)
 
         self.data = df
         return df
@@ -40,13 +46,13 @@ class Software:
     def ideal(self, num:int=10_000)->pd.DataFrame:
 
         df = pd.DataFrame()
-        df['BASE_DEV_X'] = self.centroid.reset(num)
-        df['BASE_DEV_Y'] = self.centroid.reset(num)
+        df['BASE_DEV_X'] = self.dev_x.reset(num)
+        df['BASE_DEV_Y'] = self.dev_y.reset(num)
 
         self.data = df
         return df
 
-    def __set_centroid(self, param:Parameter, json_path:str)->Parameter:
+    def __set_centroid(self, param:Parameter, json_path:str)->tuple[Parameter]:
         if param is not None:
             return param
         
@@ -58,7 +64,10 @@ class Software:
         stddev = ctr_data['STDDEV']
         units = ctr_data['UNITS']
 
-        return Parameter(ideal, stddev, mean, name='Centroid_Accuracy', units=units)
+        devX = Parameter(ideal, stddev, mean, name='BASE_DEV_X', units=units)
+        devY = Parameter(ideal, stddev, mean, name='BASE_DEV_Y', units=units)
+
+        return devX, devY
 
     def __set_identification(self, param:Parameter)->Parameter:
         return None

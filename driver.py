@@ -216,11 +216,11 @@ if __name__ == '__main__':
 
     params = setup_params(args.parameters)
 
-    sim = setup_sim_class(args.simulation, args.numberOfRuns, cam=camera, centroid=sw, orbit=None)
+    sim = setup_sim_class(args.simulation, args.numberOfRuns, cam=camera, centroid=sw, orbit=Orbit())
     
     logger.debug('Camera:\n{}'.format(sim.camera))
     logger.debug('Orbit:\n{}'.format(sim.orbit))
-    logger.debug('Centroid:\n{}'.format(sim.centroid))
+    logger.debug('Software:\n{}'.format(sim.software))
     logger.debug('Runs: {}'.format(sim.num_runs))
 
     """ 

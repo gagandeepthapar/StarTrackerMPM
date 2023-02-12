@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 class MonteCarlo(Simulation):
 
-    def __init__(self, camera:StarTracker=None, centroid:Software=None, orbit:Orbit=None, num_runs:int=1_000)->None:
-        super().__init__(camera=camera, centroid=centroid, orbit=orbit, num_runs=num_runs)
+    def __init__(self, camera:StarTracker, software:Software, orbit:Orbit, num_runs:int)->None:
+        super().__init__(camera=camera, software=software, orbit=orbit, num_runs=num_runs)
 
         return
     
@@ -47,7 +47,7 @@ class MonteCarlo(Simulation):
 
         # randomize all data from components
         f_data = self.camera.randomize(num=self.num_runs)
-        c_data = self.centroid.randomize(num=self.num_runs)
+        c_data = self.software.randomize(num=self.num_runs)
         o_data = self.orbit.randomize(num=self.num_runs)
 
         self.sim_data = pd.concat([f_data, c_data, o_data], axis=1)

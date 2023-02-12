@@ -19,32 +19,28 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-@dataclass
 class Simulation:
-    camera:StarTracker = None
-    centroid:Software = None
-    orbit:Orbit = None
-    num_runs:int = None
-    
-    def __post_init__(self)->None:
+
+    def __init__(self, camera:StarTracker=StarTracker(cam_json=c.IDEAL_CAM, cam_name='Ideal Camera'),
+                       software:Software=Software(),
+                       orbit:Orbit=Orbit(),
+                       num_runs:int=1_000)->None:
         """
         Allows default values to be set even from derived classes without copying default parameters
         """
-        if self.camera is None:
-            self.camera = StarTracker(cam_json=c.IDEAL_CAM, cam_name='Ideal Camera')
 
-        if self.centroid is None:
-            self.software = Software()
-
-        if self.orbit is None:
-            self.orbit = Orbit()
-
-        if self.num_runs is None:
-            self.num_runs = 1_000
+        self.camera = camera
+        self.software = software
+        self.orbit = orbit
+        self.num_runs = num_runs
 
         self.sim_data = pd.DataFrame()
+        self.params = {**self.camera.params, **self.software.params, **self.orbit.params}
 
-        self.params = {**self.camera.params, **self.centroid.params, **self.orbit.params}
+        self.obj_func_out = {
+                                self.sun_etal_star_mismatch:'STAR_ANGLE_MISMATCH',
+                                self.quest_objective:'QUATERNION_ERROR'
+                            }
 
         return
 

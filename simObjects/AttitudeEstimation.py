@@ -35,23 +35,23 @@ class Projection:
         self.image_x = UniformParameter(0, self.imWidth, 'IMAGE_X', units='px')
         self.image_y = UniformParameter(0, self.imHeight, 'IMAGE_Y', units='px')
 
-        self.frame = self.randomize()
+        self.frame = self.randomize(sim_row=sim_row)
         return
 
     def __repr__(self)->str:
         name = 'PROJECTION @ {}'.format(self.quat_real)
         return name
     
-    def randomize(self, num:int=None)->pd.DataFrame:
+    def randomize(self, num:int=None, sim_row:pd.Series=None)->pd.DataFrame:
         if num is None:
             num = self.numStars.modulate()
         
         self.quat_real:np.ndarray = self.__random_quat()
 
         frame:pd.DataFrame = self.__generate_px_position(num)
-        frame['CV_REAL'] = frame.apply(self.__px_to_cv, axis=1, args=(False,))
         frame['DEV_X'] = self.dev_x.modulate(num) 
         frame['DEV_Y'] = self.dev_y.modulate(num)
+        frame['CV_REAL'] = frame.apply(self.__px_to_cv, axis=1, args=(False, sim_row, ))
         frame['CV_EST'] = frame.apply(self.__px_to_cv, axis=1, args=(True,))
         frame['ECI_REAL'] = frame['CV_REAL'].apply(self.__quat_mult)
 
@@ -118,17 +118,26 @@ class Projection:
 
         return fp[name]
   
-    def __px_to_cv(self, row:pd.Series, devFlag:bool)->np.ndarray:
+    def __px_to_cv(self, row:pd.Series, devFlag:bool, sim_row:pd.Series=None)->np.ndarray:
         x = row['IMAGE_X']
         y = row['IMAGE_Y']
-        
-        if devFlag:
-            x += row['DEV_X']
-            y += row['DEV_Y']
+        f = self.focal
 
         cvx = x - self.imWidth/2
         cvy = y - self.imHeight/2
-        v = np.array([cvx, cvy, self.focal])
+
+        if devFlag:
+            cvx += row['DEV_X']
+            cvy += row['DEV_Y']
+
+        # if sim_row is not None:
+        #     f += sim_row.D_FOCAL_LENGTH
+        #     f += cvx * np.sin(np.deg2rad(sim_row.FOCAL_ARRAY_INCLINATION))
+
+            # cvx -= sim_row.PRINCIPAL_POINT_ACCURACY
+            # cvy -= sim_row.PRINCIPAL_POINT_ACCURACY
+
+        v = np.array([cvx, cvy, f])
         return v/np.linalg.norm(v)
 
     def __random_quat(self)->np.ndarray:
@@ -150,12 +159,21 @@ class Projection:
 
 class QUEST(Projection):
 
-    def __init__(self)->None:
-        super().__init__()
-        return
-    
+    def __init__(self, Centroid_Deviation_X: Parameter = None,
+                       Centroid_Deviation_Y: Parameter = None,
+                       img_width: float = None,
+                       img_height: float = None,
+                       img_focal: float = None, 
+                       sim_row:pd.Series=None, *,
+                       centroidFP: str = c.SIMPLE_CENTROID,
+                       cameraFP: str = c.ALVIUM_CAM,
+                       numStars: Parameter = Parameter(7, 2, 0, name="NUM_STARS", units="", retVal=lambda x: np.max([1, int(np.round(x))]))) -> None:
+        
+        super().__init__(Centroid_Deviation_X, Centroid_Deviation_Y, img_width, img_height, img_focal, sim_row=sim_row,
+                         centroidFP=centroidFP, cameraFP=cameraFP, numStars=numStars)
+
     def __repr__(self)->str:
-        name = 'QUEST SOLVER, {}:\n{}\n'.format(self.quat_real,self.frame)
+        name = 'QUEST SOLVER, {}:\n{}\n'.format(self.frame)
         return name
 
     def get_attitude(self, *, weights:np.ndarray=None)->np.ndarray:

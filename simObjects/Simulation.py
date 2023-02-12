@@ -15,6 +15,8 @@ from simObjects.Software import Software
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
+from simObjects.AttitudeEstimation import QUEST
+
 import threading
 
 logger = logging.getLogger(__name__)

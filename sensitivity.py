@@ -18,14 +18,13 @@ logger = logging.getLogger(__name__)
 
 class Sensitivity(Simulation):
 
-    def __init__(self, camera:StarTracker, centroid:Parameter, orbit:Orbit, num_runs:int=1_000)->None:
+    def __init__(self, params:list[Parameter], camera:StarTracker, centroid:Parameter, orbit:Orbit, num_runs:int)->None:
+        self.__mod_params = params
         super().__init__(camera, centroid, orbit, num_runs)
-
         return
     
     def __repr__(self)->str:
         return 'Sensitivity Analysis: {} Data Points'.format(self.num_runs)
-    
 
     def run_sim(self, params, obj_func: callable = None) -> pd.DataFrame:
         self.__create_data(params)

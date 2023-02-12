@@ -14,14 +14,17 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Projection:
-    def __init__(self, Centroid_Deviation:Parameter=None,
+    def __init__(self, Centroid_Deviation_X:Parameter=None,
+                       Centroid_Deviation_Y:Parameter=None,
                        img_width:float=None,
                        img_height:float=None,
-                       img_focal:float=None, * ,
+                       img_focal:float=None,
+                       sim_row:pd.Series=None, * ,
                 centroidFP:str=c.SIMPLE_CENTROID, cameraFP:str=c.ALVIUM_CAM, 
                 numStars:Parameter=Parameter(7, 2, 0, name="NUM_STARS", units="", retVal=lambda x: np.max([1,int(np.round(x))])))->None:
 
-        self.dev = self.__set_parameter(Centroid_Deviation, centroidFP)
+        self.dev_x = self.__set_parameter(Centroid_Deviation_X, centroidFP)
+        self.dev_y = self.__set_parameter(Centroid_Deviation_Y, centroidFP)
 
         self.numStars = numStars
 
@@ -46,9 +49,9 @@ class Projection:
         self.quat_real:np.ndarray = self.__random_quat()
 
         frame:pd.DataFrame = self.__generate_px_position(num)
-        frame['DEV_X'] = self.dev.modulate(num) 
-        frame['DEV_Y'] = self.dev.modulate(num)
         frame['CV_REAL'] = frame.apply(self.__px_to_cv, axis=1, args=(False,))
+        frame['DEV_X'] = self.dev_x.modulate(num) 
+        frame['DEV_Y'] = self.dev_y.modulate(num)
         frame['CV_EST'] = frame.apply(self.__px_to_cv, axis=1, args=(True,))
         frame['ECI_REAL'] = frame['CV_REAL'].apply(self.__quat_mult)
 

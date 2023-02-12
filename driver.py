@@ -226,10 +226,13 @@ if __name__ == '__main__':
     """ 
     RUN SIMULATION
     """
-    sim.run_sim(params)
+    df = sim.run_sim(params=params, obj_func=sim.quest_objective)
     logger.info('\n{}'.format(sim.sim_data.columns))
     
     logger.debug('\n{}'.format(sim.sim_data))
+    logger.debug('\n{}'.format(sim.sim_data[['BASE_DEV_X', 'BASE_DEV_Y']]))
+
+    logger.info('\n\n{}\n\n'.format(sim.sim_data['CALC_ACCURACY']))
 
     logger.info('MEAN: {}'.format(sim.sim_data['CALC_ACCURACY'].mean()))
     logger.info('STD: {}'.format(sim.sim_data['CALC_ACCURACY'].std()))

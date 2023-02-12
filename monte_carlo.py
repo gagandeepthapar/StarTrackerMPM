@@ -25,20 +25,10 @@ class MonteCarlo(Simulation):
     
     def __repr__(self)->str:
         return 'Monte Carlo Analysis: '+super().__repr__()
-    
-    def run_sim(self, params:list[str], obj_func:callable=None) -> pd.DataFrame:        
-        if obj_func is None:
-            obj_func = self.sun_etal_hardware_analysis
 
-        start = time.perf_counter()        
-        
+    def run_sim(self, params, obj_func:callable=None) -> pd.DataFrame:
         self.__create_data()
-        self.sim_data['CALC_ACCURACY'] = self.sim_data.apply(obj_func, axis=1)
-        
-        end = time.perf_counter()
-        logger.debug('Time to calculate: {}'.format(end-start))
-
-        return self.sim_data
+        return super().run_sim(obj_func)
 
     def plot_data(self, **kwargs) -> None:
         return super().plot_data()

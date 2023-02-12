@@ -40,6 +40,7 @@ class StarTracker:
         f_len_std = f_len_std / self._pixelX
 
         self.f_len = Parameter(ideal=f_len_px, stddev=f_len_std, mean=f_len_mean, name=f_len_mm.name, units='px')
+        # self.num_stars = Parameter(ideal=7, stddev=2, mean=0, name='SENSOR_EFFICIENCY', retVal=lambda x: int(x))
 
         self.params = {param.name:param for param in self.__all_params()}
 

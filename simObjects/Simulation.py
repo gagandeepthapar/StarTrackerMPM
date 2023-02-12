@@ -4,6 +4,7 @@ sys.path.append(sys.path[0] + '/..')
 
 import logging
 from dataclasses import dataclass
+import time
 
 import numpy as np
 import pandas as pd
@@ -51,9 +52,35 @@ class Simulation:
         return '{} Data Points'.format(self.num_runs)
 
 
-    def run_sim(self, obj_func:callable)->pd.DataFrame:  # method to be overloaded
-        raise RuntimeError('run_sim not implemented for {} class'.format(type(self)))
-        return 
+    def run_sim(self, obj_func:callable=None)->pd.DataFrame:  # method to be overloaded
+        if obj_func is None or obj_func not in list(self.obj_func_out.keys()):
+            obj_func = self.sun_etal_star_mismatch
+
+        column = self.obj_func_out.get(obj_func)
+        start = time.perf_counter()        
+        
+        match obj_func:    
+            case self.sun_etal_star_mismatch:
+                
+                self.sim_data[column] = self.sim_data.apply(obj_func, axis=1)
+                mean = self.sim_data[column].mean()
+                std = self.sim_data[column].std()
+                rng_min = mean - 3*std
+                rng_max = mean + 3*std
+
+            
+            case self.quest_objective:
+                self.sim_data[column] = self.sim_data.apply(obj_func, axis=1)
+
+            case _:
+                self.sim_data['CALC_ACCURACY'] = self.sim_data.apply(obj_func, axis=1)
+
+        self.sim_data['CALC_ACCURACY'] = self.sim_data[column]
+
+        end = time.perf_counter()
+        logger.debug('Time to calculate: {}'.format(end-start))
+
+        return self.sim_data
 
 
     def plot_data(self)->None: # method to be overloaded
@@ -92,7 +119,7 @@ class Simulation:
         return
 
 
-    def sun_etal_hardware_analysis(self, row:pd.Series, star_angle:float=np.random.uniform(-8, 8))->float:
+    def sun_etal_star_mismatch(self, row:pd.Series, star_angle:float=np.random.uniform(-8, 8))->float:
         """
         function to calculate accuracy of star tracker from hardware as outlined in "Optical System Error Analysis and Calibration Method of High-Accuracy Star Trackers", Sun et al (2013)
         
@@ -119,8 +146,37 @@ class Simulation:
         eA_B = np.arctan(row.PRINCIPAL_POINT_ACCURACY/(foc_len * np.cos(theta)))
 
         return 3600 * np.rad2deg(eA_A - eA_B - star_angle)
-    
 
-    def __generate_data(self)->None: # method to be overloaded
+    def quest_objective(self, row:pd.DataFrame)->float:
+        """
+        evaluation of hardware by passing it through QUEST.
+        Exploitation of Camera Pinhole Model        
+
+        Args:
+            row (pd.DataFrame): row item from data set containing information about star tracker hardware and centroiding ability
+
+        Returns:
+            float: calculated accuracy
+
+        """
+        
+        quest_obj = QUEST(self.software.dev_x, self.software.dev_y,
+                          1024, 1024, self.camera.f_len.ideal, sim_row=row)
+        
+        quat_calc = quest_obj.get_attitude()
+        quat_diff = quest_obj.calc_diff(quat_calc)
+
+        if quat_diff > 3600: # QUEST Fails if diff > 1 deg; return 0 (or NO sol'n)
+            quat_diff = 0
+
+        return quat_diff
+
+    def __px_to_cv(self, x, y, f)->np.ndarray:
+
+        v = np.array([x, y, f])
+
+        return v/np.linalg.norm(v)
+
+    def __create_data(self)->None: # method to be overloaded
         raise RuntimeError('generate data not implemented for {} class'.format(type(self)))
         return

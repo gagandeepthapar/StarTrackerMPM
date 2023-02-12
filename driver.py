@@ -46,7 +46,12 @@ def set_logging_level(argument:str)->None:
     return
 
 def parse_arguments()->argparse.Namespace:
-    
+    """
+    Parse arguments from command line (intended method to run)    
+
+    Returns:
+        argparse.Namespace: struct containing cmd arguments
+    """
     parser = argparse.ArgumentParser(prog='Star Tracker Measurement Process Model',
                                      description='Simulates a star tracker on orbit with hardware deviation, various software implementations, and varying environmental effects to analyze attitude determination accuracy and precision.',
                                     epilog='Contact Gagandeep Thapar @ gthapar@calpoly.edu for additional assistance')
@@ -163,7 +168,15 @@ def setup_sim_class(sim_type:str, run_count:int, * , cam:StarTracker, centroid:S
     return
 
 def setup_params(sim_params:list[str])->list[str]:
+    """
+    Determine list of parameters to modify according to cmd arguments    
 
+    Args:
+        sim_params (list[str]): cmd argument containing parameter abbreviations
+
+    Returns:
+        list[str]: list of full parameter names that can be called in Simulation class
+    """
     named_params = []
 
     for param in sim_params:

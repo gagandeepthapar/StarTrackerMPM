@@ -30,7 +30,7 @@ class MonteCarlo(Simulation):
         self.__create_data()
         return super().run_sim(obj_func)
 
-    def plot_data(self, **kwargs) -> None:
+    def plot_data(self, *kwargs) -> None:
         return super().plot_data()
     
     def __create_data(self)->pd.DataFrame:

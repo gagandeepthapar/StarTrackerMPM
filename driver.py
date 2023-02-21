@@ -226,7 +226,7 @@ if __name__ == '__main__':
     """ 
     RUN SIMULATION
     """
-    df = sim.run_sim(params=params, obj_func=sim.quest_objective)
+    df = sim.run_sim(params=params, obj_func=sim.sun_etal_star_mismatch)
     logger.info('\n{}'.format(sim.sim_data.columns))
     
     logger.debug('\n{}'.format(sim.sim_data))

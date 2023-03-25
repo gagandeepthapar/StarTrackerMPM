@@ -60,7 +60,7 @@ class Sensitivity(Simulation):
                 row[paramA.name] = p_a_mesh[i][j]
                 row[paramB.name] = p_b_mesh[i][j]
                 
-                acc[i][j] = self.sun_etal_hardware_analysis(row)
+                acc[i][j] = self.sun_etal_star_mismatch(row)
 
         fig = plt.figure()
         ax = fig.add_subplot(projection='3d')

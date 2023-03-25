@@ -255,8 +255,12 @@ if __name__ == '__main__':
     """ 
     RUN SIMULATION
     """
+    start = time.perf_counter()
     
     df = sim.run_sim(params=params, obj_func=obj_func)
+    end = time.perf_counter()
+    
+    delta = end - start
 
     logger.debug('{}SIM_COLS:\n\n{}{}'.format(c.RED, sim.sim_data.to_string(), c.DEFAULT))
     

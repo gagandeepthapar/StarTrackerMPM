@@ -82,7 +82,7 @@ class Sensitivity(Simulation):
 
         # idealize parameters from components
         f_data = self.camera.ideal(num=self.num_runs)
-        c_data = self.centroid.ideal(num=self.num_runs)
+        c_data = self.software.ideal(num=self.num_runs)
         o_data = self.orbit.ideal(num=self.num_runs)
 
         self.sim_data = pd.concat([f_data, c_data,o_data], axis=1)

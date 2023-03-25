@@ -78,6 +78,8 @@ def atand(val:float)->float:
     return np.rad2deg(np.arctan(val))
 
 """ CONSTANTS """
+SENSOR_WIDTH = 1024
+SENSOR_HEIGHT = 1024
 SOLARFLUX = 1367
 EARTHFLUX = 213
 EARTHMU = 398600

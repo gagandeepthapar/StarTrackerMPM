@@ -53,28 +53,11 @@ class Projection:
 
 
 
-            # cvx -= sim_row.PRINCIPAL_POINT_ACCURACY
-            # cvy -= sim_row.PRINCIPAL_POINT_ACCURACY
 
-        v = np.array([cvx, cvy, f])
-        return v/np.linalg.norm(v)
 
-    def __random_quat(self)->np.ndarray:
-        q = np.random.uniform(0, 1, 4)
-        return q/np.linalg.norm(q)
 
-    def __quat_mult(self, x:np.ndarray)->np.ndarray:
-        e = -1*self.quat_real[:3]
-        n = self.quat_real[3]
-        
-        Ca = (2*n**2 - 1) * np.identity(3)
-        Cb = 2*np.outer(e, e)
-        Cc = -2*n*self.__skew(e)
 
-        return (Ca + Cb + Cc)@x
     
-    def __skew(self, n:np.ndarray)->np.ndarray:
-        return np.array([[0, -n[2], n[1]], [n[2], 0, -n[0]], [-n[1], n[0], 0]])
 
 class QUEST(Projection):
 

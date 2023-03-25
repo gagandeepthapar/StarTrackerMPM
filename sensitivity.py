@@ -26,7 +26,7 @@ class Sensitivity(Simulation):
     def __repr__(self)->str:
         return 'Sensitivity Analysis: {} Data Points'.format(self.num_runs)
 
-    def run_sim(self, params, obj_func: callable = None) -> pd.DataFrame:
+    def run_sim(self, params, obj_func:callable) -> pd.DataFrame:
         self.__create_data(params)
         return super().run_sim(params, obj_func=obj_func)
 

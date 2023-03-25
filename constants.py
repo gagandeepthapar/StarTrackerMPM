@@ -10,10 +10,14 @@ curFile = os.path.abspath(os.path.dirname(__file__))
 IDEAL_CAM = os.path.join(curFile, 'utils/', 'idealCamera.json')
 SUNETAL_CAM = os.path.join(curFile, 'utils/', 'sunEtalCamera.json')
 ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
-
+BAD_CAM = os.path.join(curFile, 'utils/', 'badCamera.json')
 """ SOFTWARE CONFIGS """
+IDEAL_CENTROID = os.path.join(curFile, 'utils/', 'idealCentroid.json')
 SIMPLE_CENTROID = os.path.join(curFile, 'utils/', 'simpleCentroid.json')
 LEAST_SQUARES_CENTROID = os.path.join(curFile, 'utils/', 'leastSquaresCentroid.json')
+
+IDEAL_IDENT = os.path.join(curFile, 'utils/', 'idealIdentification.json')
+TYP_IDENT = os.path.join(curFile, 'utils/', 'typicalIdentification.json')
 
 """ ORBIT CONFIGS """
 ISSORBIT = os.path.join(curFile, 'utils/','issOrbit.json')
@@ -21,8 +25,6 @@ CUBESATS = os.path.join(curFile, 'utils/', 'celestrakCubeSats.json')
 ACTIVESATS = os.path.join(curFile, 'utils/', 'celestrakActiveSats.json')
 
 """ SATELLITE CONFIGS """
-CUBESAT1U = os.path.join(curFile, 'utils/', 'cubesat1UMaterial.json')
-CUBESAT3U = os.path.join(curFile, 'utils/', 'cubesat3UMaterial.json')
 TEMP_DATA = os.path.join(curFile, 'utils/', 'TEMPERATURE_DATA.pkl')
 
 """ CATALOG INFO """
@@ -76,6 +78,8 @@ def atand(val:float)->float:
     return np.rad2deg(np.arctan(val))
 
 """ CONSTANTS """
+SENSOR_WIDTH = 1024
+SENSOR_HEIGHT = 1024
 SOLARFLUX = 1367
 EARTHFLUX = 213
 EARTHMU = 398600

@@ -7,10 +7,14 @@ sys.path.append(sys.path[0] + '/..')
 from dataclasses import dataclass
 from json import load as jsonload
 
-from Parameter import Parameter, UniformParameter
+from .Parameter import Parameter, UniformParameter
 from scipy.integrate import solve_ivp
 
 import constants as c
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class StateVector:
@@ -458,7 +462,7 @@ class Orbit:
                        semiParam:Parameter=None,
                        tempParam:Parameter=None,
                        *,
-                       name:str = None,
+                       name:str = 'CubeSat_Data',
                        orbitData:OrbitData=None,
                        tempData:TempData=None)->None:
 
@@ -470,20 +474,11 @@ class Orbit:
         self.semi:Parameter = self.__set_parameter(semiParam, "SEMI")
         self.temp:Parameter = self.__set_parameter(tempParam, "TEMP")
 
-        self.arg = UniformParameter(0, 360, 'ARG', c.DEG)
-        self.raan = UniformParameter(0, 360, 'RAAN', c.DEG)
-        self.theta = UniformParameter(0, 360, 'THETA', c.DEG)
-        self.jd = UniformParameter(c.J2000, c.J2000+365.25, 'JULIAN_DATE', 'days')
-
         self.params = {
                         'INC':self.inc,
                         'ECC':self.ecc,
                         'SEMI':self.semi,
                         'TEMP':self.temp,
-                        'ARG':self.arg,
-                        'RAAN':self.raan,
-                        'THETA':self.theta,
-                        'JULIAN_DATE':self.jd
                       }
 
         self.data = self.randomize()
@@ -510,18 +505,29 @@ class Orbit:
             else:
                 df[param_name] = self.ideal*np.ones(num)
 
+        df['D_TEMP'] = df['TEMP'] - self.params['TEMP'].ideal
+        self.data = df
         return df
   
+    def ideal(self, num:int=10_000)->pd.DataFrame:
+
+        df = pd.DataFrame()
+
+        for param_name in self.params:
+            df[param_name] = self.params[param_name].reset(num)
+        
+        df['D_TEMP'] = np.zeros(len(df.index))
+        self.data = df
+        return df
+
     def __set_parameter(self, param:Parameter, name:str)->Parameter:
         if param is not None:
             return param
         
         if self.orbitData is None:
-            print('{}Generating Default Orbit Data{}'.format(c.YELLOW, c.DEFAULT))
             self.orbitData = OrbitData()
 
         if self.tempData is None:
-            print('{}Generating Temp Data{}'.format(c.YELLOW, c.DEFAULT))
             self.tempData = TempData(orbitData=self.orbitData)
         
         if name == 'TEMP':

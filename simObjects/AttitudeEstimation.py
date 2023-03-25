@@ -1,161 +1,209 @@
 import sys
+
 sys.path.append(sys.path[0] + '/..')
+
+from json import load as jsonload
 
 import numpy as np
 import pandas as pd
-
-from Parameter import Parameter, UniformParameter
+from .Parameter import Parameter, UniformParameter
 
 import constants as c
-from json import load as jsonload
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Projection:
-    def __init__(self, Centroid_Deviation:Parameter=None, * ,
-                centroidFP:str=c.SIMPLE_CENTROID, cameraFP:str=c.ALVIUM_CAM, 
-                numStars:Parameter=Parameter(7, 2, 0, name="NUM_STARS", units="", retVal=lambda x: np.max([1,int(np.round(x))])))->None:
 
-        self.dev = self.__set_parameter(Centroid_Deviation, centroidFP)
+    def __init__(self, sim_row:pd.Series):
 
-        self.numStars = numStars
-        self.imWidth, self.imHeight, self.focal = self.__read_camera(cameraFP)
+        self.state = sim_row
 
-        self.image_x = UniformParameter(0, self.imWidth, 'IMAGE_X', units='px')
-        self.image_y = UniformParameter(0, self.imHeight, 'IMAGE_Y', units='px')
+        self.quat_real, self.C = self.__set_real_rotation()
 
-        self.randomize()
+        self.frame = self.__create_star_frame()
+
         return
 
     def __repr__(self)->str:
         name = 'PROJECTION @ {}'.format(self.quat_real)
         return name
     
-    def randomize(self, num:int=None)->None:
-        if num is None:
-            num = self.numStars.modulate()
+    def __create_star_frame(self):
+        """
+        IMAGE_X => WHERE LIGHT HIT SENSOR (random)
+        IMAGE_Y => WHERE LIGHT HIT SENSOR (random)
+        PX_X => REAL X-POS OF CV    (coupled to image x, state)
+        PX_Y => REAL Y-POS OF CV    (coupled to image y, state)
+        PX_Z => REAL Z-POS OF CV    (coupled to image z (0), state)
+        """
+
+        # create dataframe
+        frame = pd.DataFrame()
+
+        # set perceived information
+        frame['IMAGE_X'] = np.random.uniform(0, c.SENSOR_WIDTH, int(self.state.NUM_STARS_SENSOR))
+        frame['IMAGE_Y'] = np.random.uniform(0, c.SENSOR_HEIGHT, int(self.state.NUM_STARS_SENSOR))
+
+        frame['IMAGE_DEV_X'] = frame['IMAGE_X'] + np.random.uniform(-1*np.abs(self.state.BASE_DEV_X), np.abs(self.state.BASE_DEV_X), len(frame.index))
+        frame['IMAGE_DEV_Y'] = frame['IMAGE_Y'] + np.random.uniform(-1*np.abs(self.state.BASE_DEV_Y), np.abs(self.state.BASE_DEV_Y), len(frame.index))
+
+        f_len = self.state.FOCAL_LENGTH - self.state.D_FOCAL_LENGTH
+
+        # create camera vectors
+        frame['CV_EST'] = frame[['IMAGE_DEV_X', 'IMAGE_DEV_Y']].apply(self.__px_to_cv, axis=1, args=(f_len, ))
+
+        # set real information
+        frame['CV_REAL'] = frame[['IMAGE_X', 'IMAGE_Y']].apply(self.__set_real_px, axis=1)
+
         
-        self.quat_real:np.ndarray = self.__random_quat()
+        # set ECI vector
+        rot = lambda x: self.C @ x
+        frame['ECI_REAL'] = frame['CV_REAL'].apply(rot)
 
-        frame:pd.DataFrame = self.__generate_px_position(num)
-        frame['DEV_X'] = [self.dev.modulate() for _ in range(num)]
-        frame['DEV_Y'] = [self.dev.modulate() for _ in range(num)]
-        frame['CV_REAL'] = frame.apply(self.__px_to_cv, axis=1, args=(False,))
-        frame['CV_EST'] = frame.apply(self.__px_to_cv, axis=1, args=(True,))
-        frame['ECI_REAL'] = frame['CV_REAL'].apply(self.__quat_mult)
+        return frame
 
-        self.frame = frame
-        return 
+    def __px_to_cv(self, row:pd.Series, f_len:float)->np.ndarray:
+        x = row[0]
+        y = row[1]
+        z = f_len
 
-    def quat_to_ra_dec(self, q:np.ndarray)->np.ndarray:
-        q1 = q[0]
-        q2 = q[1]
-        q3 = q[2]
-        q4 = q[3]
+        cvx = x - c.SENSOR_WIDTH/2
+        cvy = y - c.SENSOR_HEIGHT/2
+        cvz = z
 
-        ra = np.arctan2(q2*q3 - q1*q4, q1*q3 + q2*q4)
-        dec = np.arcsin(-q1**2*np.sqrt(q2**2 + q3**2 + q4**2))
-        roll = np.arctan2(q2*q3 + q1*q4, -q1*q3 + q2*q4)
-
-        angs = [ra, dec, roll]
-        angDecs = [np.rad2deg(ang) for ang in angs]
-
-        return angDecs
-    
-    def calc_diff(self, Q_calc:np.ndarray)->float:
-
-        realRA = self.quat_to_ra_dec(self.quat_real)
-        calcRA = self.quat_to_ra_dec(Q_calc)
-        diff = [(a-b)*3600 for (a,b) in zip(realRA, calcRA)]
-
-        return np.linalg.norm(diff)
-
-    def __set_parameter(self, param:Parameter, paramFP:str)->Parameter:
-        if param is not None:
-            return param
-        
-        with open(paramFP) as fp_open:
-            file = jsonload(fp_open)
-        ideal = file['IDEAL']
-        mean = file['MEAN']
-        std = file['STDDEV']
-        units = file['UNITS']
-
-        return Parameter(ideal, std, mean, name="CENTROID_ACCURACY", units=units)
-
-    def __generate_px_position(self, num:int)->pd.DataFrame:
-        imx = np.empty(num, dtype=float)
-        imy = np.empty(num, dtype=float)
-
-        for i in range(num):
-            imx[i] = self.image_x.modulate()
-            imy[i] = self.image_y.modulate()
-        
-        df = pd.DataFrame({'IMAGE_X':imx, 'IMAGE_Y':imy})
-        return df
-
-    def __read_camera(self, fp:str)->tuple[float]:
-        with open(fp) as fp_open:
-            file = jsonload(fp_open)
-        
-        imX = file['IMAGE_WIDTH']
-        imY = file['IMAGE_HEIGHT']
-        f = file['FOCAL_LENGTH_IDEAL']/file['PIXEL_HEIGHT']
-        return imX, imY, f
-    
-    def __px_to_cv(self, row:pd.Series, devFlag:bool)->np.ndarray:
-        x = row['IMAGE_X']
-        y = row['IMAGE_Y']
-        
-        if devFlag:
-            x += row['DEV_X']
-            y += row['DEV_Y']
-
-        cvx = x - self.imWidth/2
-        cvy = y - self.imHeight/2
-        v = np.array([cvx, cvy, self.focal])
+        v = np.array([cvx, cvy, cvz])
         return v/np.linalg.norm(v)
 
-    def __random_quat(self)->np.ndarray:
-        q = np.random.uniform(0, 1, 4)
-        return q/np.linalg.norm(q)
+    def __set_real_rotation(self)->None:
+        
+        # quaternion representation
+        q = np.random.uniform(-1,1,4)
+        q = q/np.linalg.norm(q)
+        
+        # rotation matrix
+        
+        skew = lambda n: np.array([[0, -n[2], n[1]], [n[2], 0, -n[0]], [-n[1], n[0], 0]])
 
-    def __quat_mult(self, x:np.ndarray)->np.ndarray:
-        e = -1*self.quat_real[:3]
-        n = self.quat_real[3]
+        e = -1*q[:3]
+        n = q[3]
         
         Ca = (2*n**2 - 1) * np.identity(3)
         Cb = 2*np.outer(e, e)
-        Cc = -2*n*self.__skew(e)
+        Cc = -2*n*skew(e)
 
-        return (Ca + Cb + Cc)@x
+        C = Ca + Cb + Cc
+
+        return q, C
     
-    def __skew(self, n:np.ndarray)->np.ndarray:
-        return np.array([[0, -n[2], n[1]], [n[2], 0, -n[0]], [-n[1], n[0], 0]])
+    def __set_real_px(self, img:pd.Series)->pd.Series:
 
-class QUEST(Projection):
+        cvx = img[0] - c.SENSOR_WIDTH/2 # delta_x from ppt
+        cvy = img[1] - c.SENSOR_HEIGHT/2    # delta_y from ppt
 
-    def __init__(self)->None:
-        super().__init__()
+        """
+        Focal Length Deviation
+        """
+        cvz = self.state.FOCAL_LENGTH   # this is the unobservable Focal Length
+
+        """
+        Principal Point Deviation (affects distortion and inclination calc)
+        """
+        ppt_dev = np.random.uniform(-1, 1, 2)   # random movement within some bounded circle about 0
+        ppt_dev = self.state.PRINCIPAL_POINT_ACCURACY * ppt_dev/np.linalg.norm(ppt_dev)
+        cvx += ppt_dev[0]
+        cvy += ppt_dev[1]
+
+        """
+        Lens Distortion (expressed as a percent)
+        """
+        D = self.state.DISTORTION/100
+        R = np.linalg.norm([cvx, cvy])
+        Rp = R * (1 - D)
+        cvx = Rp * cvx/R
+        cvy = Rp * cvy/R
+        
+        """
+        Focal Array Inclination
+        """
+        inc = np.deg2rad(self.state.FOCAL_ARRAY_INCLINATION)
+        del_x = np.abs(cvx) - np.abs(cvx * np.cos(inc))
+        del_z = np.abs(cvx * np.sin(inc))
+        
+        cvx = np.sign(cvx) * (np.abs(cvx) - del_x)    # tilting always brings x-coordinates towards center
+
+        if np.sign(self.state.FOCAL_ARRAY_INCLINATION) == np.sign(cvx):
+            cvz -= del_z    # focal length shortens if on "uphill"
+        else:
+            cvz += del_z    # focal length increases if on "downhill"
+
+        """
+        Convert to Unit Vector
+        """
+        v = np.array([cvx, cvy, cvz])
+
+        return v/np.linalg.norm(v)
+
+  
+class QUEST:
+
+    def __init__(self, eci_real:np.ndarray, cv_real:np.ndarray, cv_est:np.ndarray, ident:float, q:np.ndarray=None):
+
+        self.eci_real = eci_real
+        self.cv_real = cv_real
+        self.cv_est = cv_est
+        self.id = ident
+        self.q_real = q
+
         return
-    
-    def __repr__(self)->str:
-        name = 'QUEST SOLVER, {}:\n{}\n'.format(self.quat_real,self.frame)
-        return name
 
-    def get_attitude(self, *, weights:np.ndarray=None)->np.ndarray:
+    def __repr__(self)->str:
+        name = 'QUEST SOLVER, {}:\n{}\n'.format(self.frame)
+        return name
+    
+    def calc_acc(self)->float:
+
+        real_quat = self.__get_attitude(self.eci_real, self.cv_real, truth=True)
+
+        est_quat = self.__get_attitude(self.eci_real, self.cv_est, truth=False)
+        q_diff = self.__quat_accuracy(real_quat, est_quat)
+
+        return q_diff
+
+    def __remove_stars(self, eci_real:np.ndarray, cv_est:np.ndarray)->np.ndarray:
+
+        # artificially remove rows from starframe
+        ident_chance = np.random.uniform(0, 1, len(eci_real))
+
+        del_rows = np.argwhere(ident_chance > self.id)
+    
+        eci = np.delete(eci_real, del_rows, axis=0)
+        cv = np.delete(cv_est, del_rows, axis=0)
+
+        return eci, cv
+
+    def __get_attitude(self, eci_real:np.ndarray, cv:np.ndarray, truth:bool=True)->np.ndarray:
+        
         # extract eci and cv vectors
-        eci_vecs = self.frame['ECI_REAL'].to_numpy()
-        cv_vecs = self.frame['CV_EST'].to_numpy()
-        if weights is None:
-            weights = np.ones(len(eci_vecs))/len(eci_vecs)
+        eci_vecs = eci_real
+        cv_vecs = cv
+
+        if not truth:
+            eci_vecs, cv_vecs = self.__remove_stars(eci_vecs, cv_vecs)
+            
+            if len(eci_vecs) == 0:
+                return -1
+
+        weights = np.ones(len(eci_vecs))/len(eci_vecs)
 
         # calc lam params
         B = self.__calc_B(eci_vecs, cv_vecs, weights)
         K_12, K_22 = self.__calc_K(B)
         S = B + np.transpose(B)
-        a, b, c, d = self.__calc_lam_params(K_12, K_22, S)
+        a, b, c_lam, d = self.__calc_lam_params(K_12, K_22, S)
         
         # get optimal lam
-        lam = self.__calc_optimal_lambda(a, b, c, d, K_22)
+        lam = self.__calc_optimal_lambda(a, b, c_lam, d, K_22)
 
         # calc quat params
         alpha, beta, gamma = self.__calc_quat_params(lam, K_22, S)
@@ -230,3 +278,17 @@ class QUEST(Projection):
         B = -2*(a + b)*lam
         C = -c
         return A + B + C
+
+    def __quat_accuracy(self, q_real:np.ndarray, q_est:np.ndarray)->float:
+
+        conj_Q_calc = np.array([*(q_est[:3] * -1), q_est[3]])
+        q_true = q_real
+        
+        q_err_e = q_true[3]*conj_Q_calc[:3] + conj_Q_calc[3]*q_true[:3] + np.cross(q_true[:3], conj_Q_calc[:3])
+        q_err_n = q_true[3]*conj_Q_calc[3] - q_true[:3] @ conj_Q_calc[:3]
+        q_err = np.array([*q_err_e, q_err_n])
+
+        theta = 2 * np.arctan2(np.linalg.norm(q_err[:3]), q_err[3])
+        theta_deg = np.rad2deg(theta)
+        
+        return theta_deg * 3600

@@ -1,76 +1,170 @@
-import numpy as np
-
 import sys
-sys.path.append(sys.path[0] + '/..')
-import constants as c
 
+import numpy as np
+import pandas as pd
+
+sys.path.append(sys.path[0] + '/..')
 import json
 
-from .Parameter import Parameter
+import constants as c
 
+from .Parameter import Parameter
+import logging
+
+logger = logging.getLogger(__name__)
+AVG_NUM_STARS = 7
+STD_NUM_STARS = 2
+
+class LensThermalEffect:
+    def __init__(self):
+        
+        # 1/f df/dt from "Thermal effects in optical systems", Jamieson
+        self.x_f =   np.array([10.77,
+                19.73,
+                27.50,
+                0.99,
+                8.29,
+                1.11,
+                8.92,
+                3.28,
+                -5.03,
+                0.98,
+                -1.72,
+                3.54,
+                -0.53,
+                4.24,
+                -2.38,
+                -9.27,
+                0.79,
+                -10.37,
+                2.68,
+                -0.23,
+                -11.99,
+                -1.82,
+                2.24,
+                -2.80,
+                10.09,
+                0.99,
+                -1.93,
+                -3.30,
+                5.36,
+                -1.94,
+                0.83,
+                4.05,
+                8.44,
+                5.42,
+                -1.34,
+                0.32,
+                -3.65,
+                2.09,
+                0.89,
+                -2.18,
+                4.46,
+                3.90,
+                2.52,
+                0.68,
+                -0.37,
+                6.65,
+                2.32,
+                -9.26,
+                5.00,
+                -5.67,
+                3.41,
+                -4.30,
+                1.85,
+                -3.13,
+                0.55,
+                -10.61,
+                4.24,
+                -6.85,
+                14.63,
+                7.66,
+                20.94,
+                -0.71,
+                1.66,
+                -2.89,
+                -4.73,
+                16.83,
+                -64.10,
+                -85.19,
+                -28.24,
+                92.09,
+                227.87,
+                137.17,
+                132.04]) * 1e-6
+
+        self.temp_param = Parameter(self.x_f.mean(),
+                         self.x_f.std(),
+                         0,
+                         name='FOCAL_THERMAL_COEFFICIENT')
+        return 
 
 class StarTracker:
 
-    def __init__(self, centroid_accuracy:Parameter=None,
-                       principal_point_accuracy:Parameter=None,
+    def __init__(self, principal_point_accuracy:Parameter=None,
                        focal_length:Parameter=None,
                        array_tilt:Parameter=None,
                        distortion:Parameter=None,
-                       cam_name:str=None,
+                       sensor:Parameter=None,
+                       cam_name:str='IDEAL_CAM',
                        cam_json:str=c.IDEAL_CAM)->None:
 
         # open cam property file
         self.camJSON = cam_json
-        self.cam_name = self._set_name(cam_name)
+        self.cam_name = self.__set_name(cam_name)
 
         # set properties of camera
-        self.ctr_acc = self._set_parameter(centroid_accuracy, "CENTROID_ACCURACY")
-        self.ppt_acc = self._set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
-        self.array_tilt = self._set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
-        self.distortion = self._set_parameter(distortion, "DISTORTION")
-
-        f_len_mm = self._set_parameter(focal_length, "FOCAL_LENGTH")
-        self._fov = self._set_img_fov(f_len_mm=f_len_mm)
+        self.ppt_acc = self.__set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
+        self.array_tilt = self.__set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
+        self.distortion = self.__set_parameter(distortion, "DISTORTION")
+        
+        self.sensor = Parameter(AVG_NUM_STARS, STD_NUM_STARS, 0, name="NUM_STARS_SENSOR", units="", retVal=lambda x: np.max([1, int(x)]))
+        
+        f_len_mm = self.__set_parameter(focal_length, "FOCAL_LENGTH")
+        f_len_mean, f_len_std = f_len_mm.get_prob_distribution()
+        self._fov = self.__set_img_fov(f_len_mm=f_len_mm)
 
         f_len_px = f_len_mm.ideal / self._pixelX
-        self.f_len = Parameter(ideal=f_len_px, stddev=f_len_mm._err_stddev, mean=f_len_mm._err_mean, name=f_len_mm.name, units='px')
+        f_len_mean = f_len_mean / self._pixelX
+        f_len_std = f_len_std / self._pixelX
 
-        self._num_stars = self.__set_est_num_stars()
-        
+        self.f_len = Parameter(ideal=f_len_px, stddev=f_len_std, mean=f_len_mean, name=f_len_mm.name, units='px')
+        self.f_len_dtemp = LensThermalEffect().temp_param
+
+        self.params = {param.name:param for param in self.__all_params()}
+
+        self.data = self.randomize()
         self.reset_params()
 
         return
 
     def __repr__(self):
-        cname = "Camera: {} ({} Stars per frame)"\
-                "\n\t{}"\
+        cname = "Camera: {}"\
                 "\n\t{}"\
                 "\n\t{}"\
                 "\n\t{}"\
                 "\n\t{}\n".format(self.cam_name,
-                            self._num_stars,
                             repr(self.f_len),
-                            repr(self.ctr_acc),
                             repr(self.ppt_acc),
                             repr(self.array_tilt),
                             repr(self.distortion))
 
         return cname
 
-    def _set_name(self, cam_name:str)->str:
+    def __set_name(self, cam_name:str)->str:
         if cam_name is not None:
             return cam_name
         
         js = json.load(open(self.camJSON))
         return js['CAMERA_NAME']
 
-    def _set_parameter(self, parameter:Parameter, name:str)->Parameter:
+    def __set_parameter(self, parameter:Parameter, name:str)->Parameter:
         if parameter is not None:
             return parameter
 
-        return Parameter._init_from_json(self.camJSON, name)
+        return Parameter.init_from_json(self.camJSON, name)
 
-    def _set_img_fov(self, f_len_mm)->float:
+    def __set_img_fov(self, f_len_mm)->float:
 
         f_len = f_len_mm
 
@@ -89,16 +183,46 @@ class StarTracker:
 
         return fov
 
-    def __set_est_num_stars(self)->float:
-        return 4
+    def randomize(self, mod_param:list=None, num:int=1_000)->pd.DataFrame:
+
+        df = pd.DataFrame()
+
+        if mod_param is None:
+            mod_param = list(self.params.keys())
+
+        for param_name in self.params:
+            if param_name in mod_param:
+                df[param_name] = self.params[param_name].modulate(num)
+            else:
+                df[param_name] = self.params[param_name].ideal * np.ones(num)
+
+        # only parameter that is not 0 mean; need to know the delta 
+        df['D_FOCAL_LENGTH'] = df['FOCAL_LENGTH'] - self.f_len.ideal
+        self.data = df
+
+        return df
+
+    def ideal(self, num:int=1_000)->pd.DataFrame:
+
+        df = pd.DataFrame()
+
+        for param_name in self.params:
+            df[param_name] = self.params[param_name].reset(num)
+
+        # only parameter that is not 0 mean; need to know the delta 
+        df['D_FOCAL_LENGTH'] = np.zeros(len(df.index))
+        self.data = df
+
+        return df
 
     def reset_params(self)->None:
         self.f_len.reset()
-        self.ctr_acc.reset()
         self.ppt_acc.reset()
         self.array_tilt.reset()
         self.distortion.reset()
+        self.f_len_dtemp.reset()
         return
     
-    def all_params(self)->tuple[Parameter]:
-        return [self.f_len, self.array_tilt, self.ctr_acc, self.distortion, self.ppt_acc]
+    def __all_params(self)->tuple[Parameter]:
+        return [self.f_len, self.f_len_dtemp, self.sensor, self.array_tilt, self.distortion, self.ppt_acc]
+    

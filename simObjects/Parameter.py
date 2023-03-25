@@ -69,7 +69,7 @@ class Parameter:
 
 class UniformParameter:
 
-    def __init__(self, low:float, high:float, name:str=None, units:str=None, color:str=c.DEFAULT)->None:
+    def __init__(self, low:float, high:float, name:str=None, units:str=None, color:str=c.DEFAULT, retVal:callable=lambda x:x)->None:
         self.low = low
         self.high = high
         

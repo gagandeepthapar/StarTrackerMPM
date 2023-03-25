@@ -29,97 +29,29 @@ class Projection:
         name = 'PROJECTION @ {}'.format(self.quat_real)
         return name
     
-    def randomize(self, num:int=None, sim_row:pd.Series=None)->pd.DataFrame:
-        if num is None:
-            num = self.numStars.modulate()
+
+
+
+
+
+
+
+
+
+
+
+
+
         
-        self.quat_real:np.ndarray = self.__random_quat()
 
-        frame:pd.DataFrame = self.__generate_px_position(num)
-        frame['DEV_X'] = self.dev_x.modulate(num) 
-        frame['DEV_Y'] = self.dev_y.modulate(num)
-        frame['CV_REAL'] = frame.apply(self.__px_to_cv, axis=1, args=(False, sim_row, ))
-        frame['CV_EST'] = frame.apply(self.__px_to_cv, axis=1, args=(True,))
-        frame['ECI_REAL'] = frame['CV_REAL'].apply(self.__quat_mult)
 
-        self.frame = frame
-        return frame
-
-    def quat_to_ra_dec(self, q:np.ndarray)->np.ndarray:
-        q1 = q[0]
-        q2 = q[1]
-        q3 = q[2]
-        q4 = q[3]
-
-        ra = np.arctan2(q2*q3 - q1*q4, q1*q3 + q2*q4)
-        dec = np.arcsin(-q1**2*np.sqrt(q2**2 + q3**2 + q4**2))
-        roll = np.arctan2(q2*q3 + q1*q4, -q1*q3 + q2*q4)
-
-        angs = [ra, dec, roll]
-        angDecs = [np.rad2deg(ang) for ang in angs]
-
-        return angDecs
-    
-    def calc_diff(self, Q_calc:np.ndarray)->float:
-
-        realRA = self.quat_to_ra_dec(self.quat_real)
-        calcRA = self.quat_to_ra_dec(Q_calc)
-        diff = [(a-b)*3600 for (a,b) in zip(realRA, calcRA)]
-
-        return np.linalg.norm(diff)
-
-    def get_attitude(self)->np.ndarray:
-        return None
-
-    def __set_parameter(self, param:Parameter, paramFP:str)->Parameter:
-        if param is not None:
-            return param
         
-        with open(paramFP) as fp_open:
-            file = jsonload(fp_open)
-        ideal = file['IDEAL']
-        mean = file['MEAN']
-        std = file['STDDEV']
-        units = file['UNITS']
-
-        return Parameter(ideal, std, mean, name="CENTROID_ACCURACY", units=units)
-
-    def __generate_px_position(self, num:int)->pd.DataFrame:
-
-        df = pd.DataFrame()
-        df['IMAGE_X'] = self.image_x.modulate(num)
-        df['IMAGE_Y'] = self.image_y.modulate(num)
         
-        return df
 
-    def __set_img_params(self, value:float, name:str, cam_fp:str)->float:
-
-        if value is not None:
-            return value
-        
-        with open(cam_fp) as fp_open:
-            fp = jsonload(fp_open)
-        
-        if name == 'FOCAL_LENGTH':
-            return fp[name+"_IDEAL"]/fp["PIXEL_HEIGHT"]
-
-        return fp[name]
   
-    def __px_to_cv(self, row:pd.Series, devFlag:bool, sim_row:pd.Series=None)->np.ndarray:
-        x = row['IMAGE_X']
-        y = row['IMAGE_Y']
-        f = self.focal
 
-        cvx = x - self.imWidth/2
-        cvy = y - self.imHeight/2
 
-        if devFlag:
-            cvx += row['DEV_X']
-            cvy += row['DEV_Y']
 
-        # if sim_row is not None:
-        #     f += sim_row.D_FOCAL_LENGTH
-        #     f += cvx * np.sin(np.deg2rad(sim_row.FOCAL_ARRAY_INCLINATION))
 
             # cvx -= sim_row.PRINCIPAL_POINT_ACCURACY
             # cvy -= sim_row.PRINCIPAL_POINT_ACCURACY

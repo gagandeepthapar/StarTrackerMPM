@@ -16,6 +16,9 @@ IDEAL_CENTROID = os.path.join(curFile, 'utils/', 'idealCentroid.json')
 SIMPLE_CENTROID = os.path.join(curFile, 'utils/', 'simpleCentroid.json')
 LEAST_SQUARES_CENTROID = os.path.join(curFile, 'utils/', 'leastSquaresCentroid.json')
 
+IDEAL_IDENT = os.path.join(curFile, 'utils/', 'idealIdentification.json')
+TYP_IDENT = os.path.join(curFile, 'utils/', 'typicalIdentification.json')
+
 """ ORBIT CONFIGS """
 ISSORBIT = os.path.join(curFile, 'utils/','issOrbit.json')
 CUBESATS = os.path.join(curFile, 'utils/', 'celestrakCubeSats.json')

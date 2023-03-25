@@ -10,7 +10,7 @@ from json import load as jsonload
 
 import constants as c
 
-from .Parameter import Parameter
+from .Parameter import Parameter, UniformParameter
 
 logger = logging.getLogger(__name__)
 

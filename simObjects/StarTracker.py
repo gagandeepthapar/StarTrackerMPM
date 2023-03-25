@@ -12,6 +12,92 @@ from .Parameter import Parameter
 import logging
 
 logger = logging.getLogger(__name__)
+AVG_NUM_STARS = 7
+STD_NUM_STARS = 2
+
+class LensThermalEffect:
+    def __init__(self):
+        
+        # 1/f df/dt from "Thermal effects in optical systems", Jamieson
+        self.x_f =   np.array([10.77,
+                19.73,
+                27.50,
+                0.99,
+                8.29,
+                1.11,
+                8.92,
+                3.28,
+                -5.03,
+                0.98,
+                -1.72,
+                3.54,
+                -0.53,
+                4.24,
+                -2.38,
+                -9.27,
+                0.79,
+                -10.37,
+                2.68,
+                -0.23,
+                -11.99,
+                -1.82,
+                2.24,
+                -2.80,
+                10.09,
+                0.99,
+                -1.93,
+                -3.30,
+                5.36,
+                -1.94,
+                0.83,
+                4.05,
+                8.44,
+                5.42,
+                -1.34,
+                0.32,
+                -3.65,
+                2.09,
+                0.89,
+                -2.18,
+                4.46,
+                3.90,
+                2.52,
+                0.68,
+                -0.37,
+                6.65,
+                2.32,
+                -9.26,
+                5.00,
+                -5.67,
+                3.41,
+                -4.30,
+                1.85,
+                -3.13,
+                0.55,
+                -10.61,
+                4.24,
+                -6.85,
+                14.63,
+                7.66,
+                20.94,
+                -0.71,
+                1.66,
+                -2.89,
+                -4.73,
+                16.83,
+                -64.10,
+                -85.19,
+                -28.24,
+                92.09,
+                227.87,
+                137.17,
+                132.04]) * 1e-6
+
+        self.temp_param = Parameter(self.x_f.mean(),
+                         self.x_f.std(),
+                         0,
+                         name='FOCAL_THERMAL_COEFFICIENT')
+        return 
 
 class StarTracker:
 
@@ -19,6 +105,7 @@ class StarTracker:
                        focal_length:Parameter=None,
                        array_tilt:Parameter=None,
                        distortion:Parameter=None,
+                       sensor:Parameter=None,
                        cam_name:str='IDEAL_CAM',
                        cam_json:str=c.IDEAL_CAM)->None:
 
@@ -30,7 +117,9 @@ class StarTracker:
         self.ppt_acc = self.__set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
         self.array_tilt = self.__set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
         self.distortion = self.__set_parameter(distortion, "DISTORTION")
-
+        
+        self.sensor = Parameter(AVG_NUM_STARS, STD_NUM_STARS, 0, name="NUM_STARS_SENSOR", units="", retVal=lambda x: np.max([1, int(x)]))
+        
         f_len_mm = self.__set_parameter(focal_length, "FOCAL_LENGTH")
         f_len_mean, f_len_std = f_len_mm.get_prob_distribution()
         self._fov = self.__set_img_fov(f_len_mm=f_len_mm)
@@ -40,7 +129,7 @@ class StarTracker:
         f_len_std = f_len_std / self._pixelX
 
         self.f_len = Parameter(ideal=f_len_px, stddev=f_len_std, mean=f_len_mean, name=f_len_mm.name, units='px')
-        # self.num_stars = Parameter(ideal=7, stddev=2, mean=0, name='SENSOR_EFFICIENCY', retVal=lambda x: int(x))
+        self.f_len_dtemp = LensThermalEffect().temp_param
 
         self.params = {param.name:param for param in self.__all_params()}
 
@@ -131,7 +220,9 @@ class StarTracker:
         self.ppt_acc.reset()
         self.array_tilt.reset()
         self.distortion.reset()
+        self.f_len_dtemp.reset()
         return
     
     def __all_params(self)->tuple[Parameter]:
-        return [self.f_len, self.array_tilt, self.distortion, self.ppt_acc]
+        return [self.f_len, self.f_len_dtemp, self.sensor, self.array_tilt, self.distortion, self.ppt_acc]
+    

@@ -26,9 +26,9 @@ class MonteCarlo(Simulation):
     def __repr__(self)->str:
         return 'Monte Carlo Analysis: '+super().__repr__()
 
-    def run_sim(self, params, obj_func:callable=None) -> pd.DataFrame:
+    def run_sim(self, params, obj_func:callable) -> pd.DataFrame:
         self.__create_data()
-        return super().run_sim(obj_func)
+        return super().run_sim(params=params, obj_func=obj_func)
 
     def plot_data(self, *kwargs) -> None:
         return super().plot_data()

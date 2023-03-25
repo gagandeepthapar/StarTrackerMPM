@@ -245,26 +245,25 @@ if __name__ == '__main__':
     params = setup_params(args.parameters)
     sim = setup_sim_class(args.simulation, args.numberOfRuns, cam=camera, software=sw, orbit=Orbit(), mod_params=params)
     
-    logger.debug('Camera:\n{}'.format(sim.camera))
-    logger.debug('Orbit:\n{}'.format(sim.orbit))
-    logger.debug('Software:\n{}'.format(sim.software))
-    logger.debug('Runs: {}'.format(sim.num_runs))
     obj_func = setup_objective(sim, args.function)
 
+    logger.info('Camera:\n{}'.format(sim.camera))
+    logger.info('Orbit:\n{}'.format(sim.orbit))
+    logger.info('Software:\n{}'.format(sim.software))
+    logger.info('Runs: {}'.format(sim.num_runs))
 
     """ 
     RUN SIMULATION
     """
-    logger.info('\n{}'.format(sim.sim_data.columns))
     
-    logger.debug('\n{}'.format(sim.sim_data))
-    logger.debug('\n{}'.format(sim.sim_data[['BASE_DEV_X', 'BASE_DEV_Y']]))
-
-    logger.info('\n\n{}\n\n'.format(sim.sim_data['CALC_ACCURACY']))
     df = sim.run_sim(params=params, obj_func=obj_func)
 
-    logger.info('MEAN: {}'.format(sim.sim_data['CALC_ACCURACY'].mean()))
-    logger.info('STD: {}'.format(sim.sim_data['CALC_ACCURACY'].std()))
+    logger.debug('{}SIM_COLS:\n\n{}{}'.format(c.RED, sim.sim_data.to_string(), c.DEFAULT))
+    
+    logger.critical('{}TOTAL TIME: {} s{}'.format(c.GREEN, delta, c.DEFAULT))
+    logger.critical('{}PER RUN TIME: {} ms{}'.format(c.GREEN, delta/args.numberOfRuns * 1000, c.DEFAULT))
+    logger.critical('{}MEAN ACC: {}\"{}'.format(c.GREEN, df.CALC_ACCURACY.mean(), c.DEFAULT))
+    logger.critical('{}STD ACC: {}\"{}\n'.format(c.GREEN, df.CALC_ACCURACY.std(), c.DEFAULT))
 
     """ 
     PLOT SIMULATION RESULTS

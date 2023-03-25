@@ -258,6 +258,7 @@ if __name__ == '__main__':
     start = time.perf_counter()
     
     df = sim.run_sim(params=params, obj_func=obj_func)
+    df = df[df['CALC_ACCURACY'] > 0]    # removes bad guesses (purposefully set to -1)
     end = time.perf_counter()
     
     delta = end - start
@@ -274,4 +275,5 @@ if __name__ == '__main__':
     """
     if args.plot:
         sim.plot_data(params)
+        df.CALC_ACCURACY.hist(bins=100)
         plt.show()

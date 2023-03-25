@@ -41,5 +41,14 @@ class MonteCarlo(Simulation):
         o_data = self.orbit.randomize(num=self.num_runs)
 
         self.sim_data = pd.concat([f_data, c_data, o_data], axis=1)
+        
+        # update focal_length based on temperature
+        df_dtemp = self.sim_data['FOCAL_LENGTH'] * (self.sim_data['D_TEMP'] * self.sim_data['FOCAL_THERMAL_COEFFICIENT'])
 
+        logger.debug('\n{}DTEMP: {} +/- {}{}'.format(c.RED, df_dtemp.mean(), df_dtemp.std(), c.DEFAULT))
+        logger.debug('\n{}flen: {}{}'.format(c.RED, self.camera.f_len.ideal, c.DEFAULT))
+        
+        self.sim_data['FOCAL_LENGTH'] = self.sim_data['FOCAL_LENGTH'] + df_dtemp
+        self.sim_data['D_FOCAL_LENGTH'] = self.sim_data['FOCAL_LENGTH'] - self.camera.f_len.ideal
+        
         return self.sim_data

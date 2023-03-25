@@ -14,28 +14,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Projection:
-    def __init__(self, Centroid_Deviation_X:Parameter=None,
-                       Centroid_Deviation_Y:Parameter=None,
-                       img_width:float=None,
-                       img_height:float=None,
-                       img_focal:float=None,
-                       sim_row:pd.Series=None, * ,
-                centroidFP:str=c.SIMPLE_CENTROID, cameraFP:str=c.ALVIUM_CAM, 
-                numStars:Parameter=Parameter(7, 2, 0, name="NUM_STARS", units="", retVal=lambda x: np.max([1,int(np.round(x))])))->None:
 
-        self.dev_x = self.__set_parameter(Centroid_Deviation_X, centroidFP)
-        self.dev_y = self.__set_parameter(Centroid_Deviation_Y, centroidFP)
+    def __init__(self, sim_row:pd.Series):
 
-        self.numStars = numStars
+        self.state = sim_row
 
-        self.imWidth = self.__set_img_params(img_width, "IMAGE_WIDTH", cameraFP)
-        self.imHeight = self.__set_img_params(img_height, "IMAGE_HEIGHT", cameraFP)
-        self.focal = self.__set_img_params(img_focal, "FOCAL_LENGTH", cameraFP)
+        self.quat_real, self.C = self.__set_real_rotation()
 
-        self.image_x = UniformParameter(0, self.imWidth, 'IMAGE_X', units='px')
-        self.image_y = UniformParameter(0, self.imHeight, 'IMAGE_Y', units='px')
+        self.frame = self.__create_star_frame()
 
-        self.frame = self.randomize(sim_row=sim_row)
         return
 
     def __repr__(self)->str:

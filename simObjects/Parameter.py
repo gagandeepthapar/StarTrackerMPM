@@ -40,7 +40,7 @@ class Parameter:
         return pname 
 
     def modulate(self, num:int=1)->float:
-        values = np.apply_along_axis(self.retVal, 0, np.random.normal(loc=self.__err_mean, scale=self.__err_stddev, size=num)+self.ideal) 
+        values = np.array([self.retVal(x) for x in np.random.normal(loc=self.__err_mean, scale=self.__err_stddev, size=num)+self.ideal])
         self.value = np.mean(values)
         return values
     
@@ -76,8 +76,7 @@ class UniformParameter:
         self.name = name
         self.units = units
         self.color = color
-
-        self.value = self.modulate()
+        self.retVal = retVal
 
         return
     
@@ -86,6 +85,6 @@ class UniformParameter:
         return name
     
     def modulate(self, num:int=1)->float:
-        values = np.random.uniform(self.low, self.high, num)
+        values = np.array([self.retVal(x) for x in np.random.uniform(self.low, self.high, num)])
         self.value = np.mean(values)
         return values

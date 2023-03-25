@@ -132,13 +132,13 @@ def setup_software(args_sw:str)->Software:
     match args_sw_upper:
 
         case 'I' | 'IDEAL':
-            sw = Software(ctr_json=c.IDEAL_CENTROID)
+            sw = Software(ctr_json=c.IDEAL_CENTROID, id_json=c.IDEAL_IDENT)
 
         case 'B' | 'BASIC':
-            sw = Software(ctr_json=c.SIMPLE_CENTROID)
+            sw = Software(ctr_json=c.SIMPLE_CENTROID, id_json=c.TYP_IDENT)
         
         case 'A' | 'ADVANCED':
-            sw = Software(ctr_json=c.LEAST_SQUARES_CENTROID)
+            sw = Software(ctr_json=c.LEAST_SQUARES_CENTROID, id_json=c.TYP_IDENT)
         
         case _:
             sw = Software(ctr_json=args_sw)

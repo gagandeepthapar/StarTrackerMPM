@@ -56,6 +56,8 @@ def parse_arguments()->argparse.Namespace:
                                      description='Simulates a star tracker on orbit with hardware deviation, various software implementations, and varying environmental effects to analyze attitude determination accuracy and precision.',
                                     epilog='Contact Gagandeep Thapar @ gthapar@calpoly.edu for additional assistance')
 
+    parser.add_argument('-func', '--function', metavar='', type=str, help='Set Objective Function: (Q)uest First Principles, (S)un Et. al Star Location Error, (C)ombine QUEST with Sun Et. al Errors. Default Q.', default='Q')
+
     parser.add_argument('-log', '--logger', metavar='', type=str, help='Set logging level: (D)ebug, (I)nfo, (W)arning, (E)rror, (C)ritical. Default INFO.', default='INFO')
 
     # parser.add_argument('-T', '--threads', metavar='', type=int, nargs=1, help='Number of threads to split task. Default 1.', default=1)
@@ -205,6 +207,33 @@ def setup_params(sim_params:list[str])->list[str]:
 
     return named_params
 
+def setup_objective(simulation:Simulation, func_str:str):
+    """
+    Set the objective function to calculate accuracy of star tracker
+
+    Args:
+        simulation (Simulation): sim object (pre-created)
+        func_str (str): argument from command line
+    """
+
+    func_str = func_str.upper()
+
+    match func_str:
+
+        case 'Q':
+            obj_func = simulation.quest_objective
+
+        case 'S':
+            obj_func = simulation.sun_etal_star_mismatch
+            
+        case 'C':
+            obj_func = simulation.sun_etal_quest
+
+        case _:
+            raise NameError('Improper Input. Either Q/S/C for QUEST, Sun Et. Al Mismatch, Combination of QUEST and Sun Et Al., respectively')
+
+    return obj_func
+
 if __name__ == '__main__':
     args = parse_arguments()    # parse command line arguments
 
@@ -222,17 +251,19 @@ if __name__ == '__main__':
     logger.debug('Orbit:\n{}'.format(sim.orbit))
     logger.debug('Software:\n{}'.format(sim.software))
     logger.debug('Runs: {}'.format(sim.num_runs))
+    obj_func = setup_objective(sim, args.function)
+
 
     """ 
     RUN SIMULATION
     """
-    df = sim.run_sim(params=params, obj_func=sim.sun_etal_star_mismatch)
     logger.info('\n{}'.format(sim.sim_data.columns))
     
     logger.debug('\n{}'.format(sim.sim_data))
     logger.debug('\n{}'.format(sim.sim_data[['BASE_DEV_X', 'BASE_DEV_Y']]))
 
     logger.info('\n\n{}\n\n'.format(sim.sim_data['CALC_ACCURACY']))
+    df = sim.run_sim(params=params, obj_func=obj_func)
 
     logger.info('MEAN: {}'.format(sim.sim_data['CALC_ACCURACY'].mean()))
     logger.info('STD: {}'.format(sim.sim_data['CALC_ACCURACY'].std()))

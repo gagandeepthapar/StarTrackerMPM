@@ -145,7 +145,7 @@ def setup_software(args_sw:str)->Software:
 
     return sw
 
-def setup_sim_class(sim_type:str, run_count:int, * , cam:StarTracker, centroid:Software, orbit:Orbit, mod_params:list[str])->Simulation:
+def setup_sim_class(sim_type:str, run_count:int, * , cam:StarTracker, software:Software, orbit:Orbit, mod_params:list[str])->Simulation:
     """
     Instantiate indicated Simulation class for data generation    
 
@@ -162,10 +162,10 @@ def setup_sim_class(sim_type:str, run_count:int, * , cam:StarTracker, centroid:S
     match sim_type:
 
         case 'M' | 'Monte Carlo':
-            return  mc.MonteCarlo(cam, centroid, orbit, run_count)
+            return  mc.MonteCarlo(cam, software, orbit, run_count)
 
         case 'S' | 'Sensitivity Analysis':
-            return sense.Sensitivity(mod_params, cam, centroid, orbit, run_count)
+            return sense.Sensitivity(mod_params, cam, software, orbit, run_count)
 
     return
 
@@ -242,10 +242,8 @@ if __name__ == '__main__':
     """
     camera = setup_star_tracker(args.camera)
     sw = setup_software(args.software)
-
     params = setup_params(args.parameters)
-
-    sim = setup_sim_class(args.simulation, args.numberOfRuns, cam=camera, centroid=sw, orbit=Orbit(), mod_params=params)
+    sim = setup_sim_class(args.simulation, args.numberOfRuns, cam=camera, software=sw, orbit=Orbit(), mod_params=params)
     
     logger.debug('Camera:\n{}'.format(sim.camera))
     logger.debug('Orbit:\n{}'.format(sim.orbit))

@@ -24,11 +24,10 @@ class Software:
         self.identification = self.__set_ident(identification, id_json)
 
         self.fail_ident = self.__set_ident(identification, id_json, name='FAIL_IDENT_RATE')
-        self.false_ident = self.__set_ident(identification, id_json, name='FALSE_IDENT_RATE')
         self.data = self.randomize()
         
-        self.__param_list = [self.dev_x, self.dev_y, self.identification, self.fail_ident, self.false_ident]
-        
+        self.__param_list = [self.dev_x, self.dev_y, self.fail_ident]
+        # self.identification, 
         self.params = {param.name: param for param in self.__param_list}
 
         return
@@ -41,9 +40,9 @@ class Software:
         df = pd.DataFrame()
         df['BASE_DEV_X'] = self.dev_x.modulate(num)
         df['BASE_DEV_Y'] = self.dev_y.modulate(num)
-        df['IDENTIFICATION_ACCURACY'] = self.identification.modulate(num)
+        # df['IDENTIFICATION_ACCURACY'] = self.identification.modulate(num)
         df['FAIL_IDENT_RATE'] = self.fail_ident.modulate(num)
-        df['FALSE_IDENT_RATE'] = self.false_ident.modulate(num)
+        # df['FALSE_IDENT_RATE'] = self.false_ident.modulate(num)
 
         self.data = df
         return df

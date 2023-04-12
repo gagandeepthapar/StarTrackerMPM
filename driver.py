@@ -288,6 +288,7 @@ if __name__ == '__main__':
     PLOT SIMULATION RESULTS
     """
     if args.plot:
+        # df.CALC_ACCURACY.hist(bins=100)
         sim.plot_data(params)
-        df.CALC_ACCURACY.hist(bins=100)
+        
         plt.show()

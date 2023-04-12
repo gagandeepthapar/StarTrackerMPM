@@ -96,25 +96,55 @@ class Simulation:
 
         param_fig = plt.figure()
         param_fig.suptitle('Input Parameter Distribution')
-        size = (int(len(self.params)/2)+1, 2)
+        # cam_sw_params = {**self.camera.params, **self.software.params}
+        
+        cam_sw_params    = {"Focal Length [px]": self.camera.f_len,
+                         "Number of Stars": self.camera.sensor,
+                         r'$\epsilon_x$ [px]':self.camera.eps_x,
+                         r"$\epsilon_y$ [px]":self.camera.eps_y,
+                         r"$\epsilon_z$ [px]":self.camera.eps_z,
+                         r"$\phi$ [deg]":self.camera.phi,
+                         r"$\theta$ [deg]":self.camera.theta,
+                         r"$\psi$ [deg]":self.camera.psi,
+                         "Centroid-X Deviation [px]":self.software.dev_x,
+                         "Centroid-Y Deviation [px]":self.software.dev_y,
+                         "Identification Performance [%]":self.software.fail_ident}
 
-        for i, param in enumerate(list(self.params.keys())):
+        # cam_sw_params = {param.name:param for param in param_list}
+
+        size = (int(len(cam_sw_params)/2)+1, 2)
+
+        
+        for i, param in enumerate(list(cam_sw_params.keys())):
+
+            param_data = self.sim_data[cam_sw_params[param].name]
 
             param_ax = param_fig.add_subplot(size[0], size[1], i+1)
 
             if i%2 == 0: param_ax.set_ylabel('Number of Runs')
 
-            param_ax.hist(self.sim_data[param], bins=int(np.sqrt(self.num_runs)), label=param)
+            param_ax.hist(param_data, bins=int(np.sqrt(self.num_runs)))
             param_ax.set_title('{}: {} +/- {}'.\
-                                format(param.replace('_', ' ').title(),\
-                                        np.round(self.sim_data[param].mean(), 3),\
-                                        np.round(self.sim_data[param].std(), 3)))
+                                format(param,\
+                                        np.round(param_data.mean(), 3),\
+                                        np.round(param_data.std(), 3)))
 
             if param == 'FOCAL_LENGTH':
                 param_ax.axvline(self.camera.f_len.ideal, color='r', label='True Focal Length ({} px)'.format(np.round(self.camera.f_len.ideal,3)))
             
             param_ax.legend()
-                                        
+
+        param_ax = param_fig.add_subplot(size[0], size[1], len(cam_sw_params)+1)
+        param_ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
+        param_ax.set_ylabel('Number of Runs')
+        param_ax.set_xlabel('Calculated Accuracy [arcsec]')
+        param_ax.set_title('Star Tracker Accuracy: {} +/-{} arcsec:\n{:,} Runs'.\
+                    format(np.round(self.sim_data['CALC_ACCURACY'].mean(),3),\
+                           np.round(self.sim_data['CALC_ACCURACY'].std(),3),
+                           self.num_runs))
+
+        # print(len(self.sim_data.index))
+
         return
 
     """ 
@@ -169,12 +199,12 @@ class Simulation:
         project = Projection(sim_row)
         # logger.debug('{}STAR_FRAME:\n{}{}'.format(c.RED, project.frame.to_string(), c.DEFAULT))
         
-        eci_real = project.frame['ECI_REAL'].to_numpy()
-        cv_real = project.frame['CV_REAL'].to_numpy()
-        cv_est = project.frame['CV_EST'].to_numpy()
+        eci_real = project.frame['ECI_TRUE'].to_numpy()
+        cv_real = project.frame['CV_TRUE'].to_numpy()
+        cv_est = project.frame['CV_MEAS'].to_numpy()
         q_real = project.quat_real
         
-        quest = QUEST(eci_real, cv_real, cv_est, sim_row.IDENTIFICATION_ACCURACY,q_real)
+        quest = QUEST(eci_real, cv_real, cv_est, sim_row.FAIL_IDENT_RATE,q_real)
 
         q_diff = quest.calc_acc()
         # logger.debug('{}Q_DIFF: {}{}'.format(c.RED, q_diff, c.DEFAULT))

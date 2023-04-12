@@ -41,39 +41,41 @@ class Projection:
         # create dataframe
         frame = pd.DataFrame()
 
+        frame['IDX'] = np.array([i for i in range(int(self.state.NUM_STARS_SENSOR))])
+        frame['CV_TRUE'] = frame.apply(lambda v: self.__s_hat_in_fov(), axis=1)
+        frame['ECI_TRUE'] = frame['CV_TRUE'].apply(lambda v: self.C @ v)
+        frame['CV_MEAS'] = frame.apply(self.__PHI_S, axis=1)
+        # print(frame)
+        # frame['CV_MEAS'] = frame.apply(s)
+        # raise ValueError
+
         # set perceived information
-        frame['IMAGE_X'] = np.random.uniform(0, c.SENSOR_WIDTH, int(self.state.NUM_STARS_SENSOR))
-        frame['IMAGE_Y'] = np.random.uniform(0, c.SENSOR_HEIGHT, int(self.state.NUM_STARS_SENSOR))
+        # frame['IMAGE_X'] = np.random.uniform(0, c.SENSOR_WIDTH, int(self.state.NUM_STARS_SENSOR))
+        # frame['IMAGE_Y'] = np.random.uniform(0, c.SENSOR_HEIGHT, int(self.state.NUM_STARS_SENSOR))
 
-        frame['IMAGE_DEV_X'] = frame['IMAGE_X'] + np.random.uniform(-1*np.abs(self.state.BASE_DEV_X), np.abs(self.state.BASE_DEV_X), len(frame.index))
-        frame['IMAGE_DEV_Y'] = frame['IMAGE_Y'] + np.random.uniform(-1*np.abs(self.state.BASE_DEV_Y), np.abs(self.state.BASE_DEV_Y), len(frame.index))
+        # frame['IMAGE_DEV_X'] = frame['IMAGE_X'] + np.random.uniform(-1*np.abs(self.state.BASE_DEV_X), np.abs(self.state.BASE_DEV_X), len(frame.index))
+        # frame['IMAGE_DEV_Y'] = frame['IMAGE_Y'] + np.random.uniform(-1*np.abs(self.state.BASE_DEV_Y), np.abs(self.state.BASE_DEV_Y), len(frame.index))
 
-        f_len = self.state.FOCAL_LENGTH - self.state.D_FOCAL_LENGTH
+        # f_len = self.state.FOCAL_LENGTH - self.state.D_FOCAL_LENGTH
 
-        # create camera vectors
-        frame['CV_EST'] = frame[['IMAGE_DEV_X', 'IMAGE_DEV_Y']].apply(self.__px_to_cv, axis=1, args=(f_len, ))
+        # # create camera vectors
+        # frame['CV_EST'] = frame[['IMAGE_DEV_X', 'IMAGE_DEV_Y']].apply(self.__px_to_cv, axis=1, args=(f_len, ))
 
-        # set real information
-        frame['CV_REAL'] = frame[['IMAGE_X', 'IMAGE_Y']].apply(self.__set_real_px, axis=1)
+        # # set real information
+        # frame['CV_REAL'] = frame[['IMAGE_X', 'IMAGE_Y']].apply(self.__set_real_px, axis=1)
 
         
-        # set ECI vector
-        rot = lambda x: self.C @ x
-        frame['ECI_REAL'] = frame['CV_REAL'].apply(rot)
+        # # set ECI vector
+        # rot = lambda x: self.C @ x
+        # frame['ECI_REAL'] = frame['CV_REAL'].apply(rot)
 
         return frame
 
-    def __px_to_cv(self, row:pd.Series, f_len:float)->np.ndarray:
-        x = row[0]
-        y = row[1]
-        z = f_len
-
-        cvx = x - c.SENSOR_WIDTH/2
-        cvy = y - c.SENSOR_HEIGHT/2
-        cvz = z
-
-        v = np.array([cvx, cvy, cvz])
-        return v/np.linalg.norm(v)
+    def __s_hat_in_fov(self)->np.ndarray:
+        fov = np.arctan2(c.SENSOR_HEIGHT/2,self.state.FOCAL_LENGTH)
+        phi = np.random.uniform(-fov, fov)
+        theta = np.random.uniform(-np.pi, np.pi)
+        return np.array([np.sin(phi)*np.cos(theta), np.sin(phi)*np.sin(theta), np.cos(phi)])
 
     def __set_real_rotation(self)->None:
         
@@ -95,6 +97,57 @@ class Projection:
         C = Ca + Cb + Cc
 
         return q, C
+
+    def __Rx(self, phi:float)->np.ndarray:
+        return np.array([[1, 0, 0],
+                         [0, np.cos(phi), -np.sin(phi)],
+                         [0, np.sin(phi), np.cos(phi)]])
+
+    def __Ry(self, theta:float)->np.ndarray:
+        return np.array([[np.cos(theta), 0, np.sin(theta)],
+                         [0, 1, 0],
+                         [-np.sin(theta), 0, np.cos(theta)]])
+    
+    def __Rz(self, psi:float)->np.ndarray:
+        return np.array([[np.cos(psi), -np.sin(psi), 0],
+                         [np.sin(psi), np.cos(psi), 0],
+                         [0, 0, 1]])
+
+    def __PHI_S(self, row:pd.Series)->np.ndarray:
+
+        phi = np.deg2rad(self.state.F_ARR_PHI)
+        theta = np.deg2rad(self.state.F_ARR_THETA)
+        psi = np.deg2rad(self.state.F_ARR_PSI)
+        C_gamma_pi = self.__Rx(phi) @ self.__Ry(theta) @ self.__Rz(psi)
+        
+        r_F_pi_gamma = np.array([self.state.F_ARR_EPS_X, 
+                               self.state.F_ARR_EPS_Y,
+                               self.state.F_ARR_EPS_Z + self.state.FOCAL_LENGTH])
+        
+        r_F_pi_pi = C_gamma_pi @ r_F_pi_gamma
+        r_S_F_pi = C_gamma_pi @ row.CV_TRUE
+        lam_star = (-1 * r_F_pi_pi[2]) / (r_S_F_pi[2])
+        P_star = lam_star * r_S_F_pi + r_F_pi_pi
+        P_star[0] += self.state.BASE_DEV_X
+        P_star[1] += self.state.BASE_DEV_Y
+
+        s_hat = np.array([-P_star[0], -P_star[1], self.state.FOCAL_LENGTH])
+
+        return s_hat / np.linalg.norm(s_hat)
+
+
+    def __px_to_cv(self, row:pd.Series, f_len:float)->np.ndarray:
+        x = row[0]
+        y = row[1]
+        z = f_len
+
+        cvx = x - c.SENSOR_WIDTH/2
+        cvy = y - c.SENSOR_HEIGHT/2
+        cvz = z
+
+        v = np.array([cvx, cvy, cvz])
+        return v/np.linalg.norm(v)
+
     
     def __set_real_px(self, img:pd.Series)->pd.Series:
 

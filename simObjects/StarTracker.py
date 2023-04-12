@@ -8,7 +8,7 @@ import json
 
 import constants as c
 
-from .Parameter import Parameter
+from .Parameter import Parameter, UniformParameter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -130,6 +130,23 @@ class StarTracker:
         self.cam_name = self.__set_name(cam_name)
 
         # set properties of camera
+        # self.eps_x = Parameter(0, 0, name='F_ARR_EPS_X')
+        # self.eps_y = Parameter(0, 0, name='F_ARR_EPS_Y')
+        # self.eps_z = Parameter(0, 0, name='F_ARR_EPS_Z')
+
+        # self.phi = Parameter(0, 0, name='F_ARR_PHI')
+        # self.theta = Parameter(0, 0, name='F_ARR_THETA')
+        # self.psi = Parameter(0, 0, name='F_ARR_PSI')
+
+        self.eps_x = Parameter(0, .1, name='F_ARR_EPS_X')
+        self.eps_y = Parameter(0, .1, name='F_ARR_EPS_Y')
+        self.eps_z = Parameter(0, 1, name='F_ARR_EPS_Z')
+
+        self.phi = Parameter(0, .01, name='F_ARR_PHI')
+        self.theta = Parameter(0, .01, name='F_ARR_THETA')
+        self.psi = Parameter(0, .01, name='F_ARR_PSI')
+
+
         self.ppt_acc = self.__set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
         self.array_tilt = self.__set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
         self.distortion = self.__set_parameter(distortion, "DISTORTION")
@@ -232,13 +249,10 @@ class StarTracker:
         return df
 
     def reset_params(self)->None:
-        self.f_len.reset()
-        self.ppt_acc.reset()
-        self.array_tilt.reset()
-        self.distortion.reset()
-        self.f_len_dtemp.reset()
+        for param in self.__all_params():
+            param.reset()
         return
     
     def __all_params(self)->tuple[Parameter]:
-        return [self.f_len, self.f_len_dtemp, self.sensor, self.array_tilt, self.distortion, self.ppt_acc]
-    
+        return [self.f_len, self.f_len_dtemp, self.sensor, self.array_tilt, self.distortion, self.ppt_acc, self.eps_x, self.eps_y, self.eps_z, self.phi, self.theta, self.psi]
+            

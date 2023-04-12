@@ -23,13 +23,13 @@ class Software:
         self.dev_x, self.dev_y = self. __set_centroid(centroiding, ctr_json)
         self.identification = self.__set_ident(identification, id_json)
 
+        self.fail_ident = self.__set_ident(identification, id_json, name='FAIL_IDENT_RATE')
+        self.false_ident = self.__set_ident(identification, id_json, name='FALSE_IDENT_RATE')
         self.data = self.randomize()
-
-        self.params = {
-                        'BASE_DEV_X': self.dev_x,
-                        'BASE_DEV_Y': self.dev_y,
-                        'IDENTIFICATION': self.identification
-                      }
+        
+        self.__param_list = [self.dev_x, self.dev_y, self.identification, self.fail_ident, self.false_ident]
+        
+        self.params = {param.name: param for param in self.__param_list}
 
         return
 
@@ -42,6 +42,8 @@ class Software:
         df['BASE_DEV_X'] = self.dev_x.modulate(num)
         df['BASE_DEV_Y'] = self.dev_y.modulate(num)
         df['IDENTIFICATION_ACCURACY'] = self.identification.modulate(num)
+        df['FAIL_IDENT_RATE'] = self.fail_ident.modulate(num)
+        df['FALSE_IDENT_RATE'] = self.false_ident.modulate(num)
 
         self.data = df
         return df
@@ -72,7 +74,7 @@ class Software:
 
         return devX, devY
     
-    def __set_ident(self, param:Parameter, json_path:str)->UniformParameter:
+    def __set_ident(self, param:Parameter, json_path:str, name:str='IDENTIFICATION_ACCURACY')->UniformParameter:
         if param is not None:
             return param
         
@@ -80,6 +82,6 @@ class Software:
             id_data = jsonload(fp_open)
 
         min_acc = id_data['MIN_ACCURACY']
-        ident = UniformParameter(min_acc, 1.0, name='IDENTIFICATION_ACCURACY', units='Percent')
+        ident = UniformParameter(min_acc, 1.0, name=name, units='Percent')
 
         return ident

@@ -167,7 +167,7 @@ class Simulation:
         """
 
         project = Projection(sim_row)
-        logger.debug('{}STAR_FRAME:\n{}{}'.format(c.RED, project.frame.to_string(), c.DEFAULT))
+        # logger.debug('{}STAR_FRAME:\n{}{}'.format(c.RED, project.frame.to_string(), c.DEFAULT))
         
         eci_real = project.frame['ECI_REAL'].to_numpy()
         cv_real = project.frame['CV_REAL'].to_numpy()
@@ -177,7 +177,7 @@ class Simulation:
         quest = QUEST(eci_real, cv_real, cv_est, sim_row.IDENTIFICATION_ACCURACY,q_real)
 
         q_diff = quest.calc_acc()
-        logger.debug('{}Q_DIFF: {}{}'.format(c.RED, q_diff, c.DEFAULT))
+        # logger.debug('{}Q_DIFF: {}{}'.format(c.RED, q_diff, c.DEFAULT))
 
         return q_diff
 

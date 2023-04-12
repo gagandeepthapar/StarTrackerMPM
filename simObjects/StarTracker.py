@@ -99,6 +99,22 @@ class LensThermalEffect:
                          name='FOCAL_THERMAL_COEFFICIENT')
         return 
 
+class StarVisibility:
+
+    def __init__(self, magnitude:float=5):
+
+        self.cat_data:pd.DataFrame = pd.read_pickle(c.BSC5PKL)
+        self.star_vis = self.__create_vis_param(magnitude)
+
+        return
+    
+    def __create_vis_param(self, mag:float, trials:int=1_000_000):
+
+        mod_df = self.cat_data[self.cat_data['v_magnitude'] <= mag]
+        
+
+        return
+
 class StarTracker:
 
     def __init__(self, principal_point_accuracy:Parameter=None,

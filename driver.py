@@ -262,13 +262,27 @@ if __name__ == '__main__':
     end = time.perf_counter()
     
     delta = end - start
-
-    logger.debug('{}SIM_COLS:\n\n{}{}'.format(c.RED, sim.sim_data.to_string(), c.DEFAULT))
+    numFail = args.numberOfRuns - len(df.index)
+    failRate = numFail/args.numberOfRuns
     
     logger.critical('{}TOTAL TIME: {} s{}'.format(c.GREEN, delta, c.DEFAULT))
     logger.critical('{}PER RUN TIME: {} ms{}'.format(c.GREEN, delta/args.numberOfRuns * 1000, c.DEFAULT))
     logger.critical('{}MEAN ACC: {}\"{}'.format(c.GREEN, df.CALC_ACCURACY.mean(), c.DEFAULT))
-    logger.critical('{}STD ACC: {}\"{}\n'.format(c.GREEN, df.CALC_ACCURACY.std(), c.DEFAULT))
+    logger.critical('{}STD ACC: {}\"{}'.format(c.GREEN, df.CALC_ACCURACY.std(), c.DEFAULT))
+    logger.critical('{}FAILURE RATE: {}% ({}/{}){}\n'.format(c.GREEN, failRate*100, numFail, args.numberOfRuns, c.DEFAULT))
+    logger.debug('{}SIM COLS:\n\n{}{}'.format(c.RED, sim.sim_data.columns, c.DEFAULT))
+    logger.debug('{}SIM DATA:\n\n{}{}'.format(c.RED, sim.sim_data, c.DEFAULT))
+    
+    fmin = sim.sim_data.FOCAL_LENGTH.min()
+    fmax = sim.sim_data.FOCAL_LENGTH.max()
+    
+    fov = lambda x: np.rad2deg(np.arctan2(c.SENSOR_HEIGHT/2, x))
+
+    fovmin = fov(fmin)
+    fovmax = fov(fmax)
+
+    logger.debug('\n{}/{}\n'.format(fmin, fmax))
+    logger.debug('\n{}/{}\n'.format(fovmin, fovmax))
 
     """ 
     PLOT SIMULATION RESULTS

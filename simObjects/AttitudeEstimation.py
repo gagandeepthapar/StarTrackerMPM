@@ -164,8 +164,8 @@ class QUEST:
     def calc_acc(self)->float:
 
         real_quat = self.__get_attitude(self.eci_real, self.cv_real, truth=True)
-
         est_quat = self.__get_attitude(self.eci_real, self.cv_est, truth=False)
+        
         q_diff = self.__quat_accuracy(real_quat, est_quat)
 
         return q_diff
@@ -191,7 +191,7 @@ class QUEST:
         if not truth:
             eci_vecs, cv_vecs = self.__remove_stars(eci_vecs, cv_vecs)
             
-            if len(eci_vecs) == 0:
+            if len(eci_vecs) <= 1:
                 return -1
 
         weights = np.ones(len(eci_vecs))/len(eci_vecs)
@@ -281,6 +281,10 @@ class QUEST:
 
     def __quat_accuracy(self, q_real:np.ndarray, q_est:np.ndarray)->float:
 
+        if type(q_est) is int:
+            logger.critical('{}Failed Ident{}'.format(c.RED,c.DEFAULT))
+            return -1
+        
         conj_Q_calc = np.array([*(q_est[:3] * -1), q_est[3]])
         q_true = q_real
         

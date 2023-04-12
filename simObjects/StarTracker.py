@@ -162,7 +162,7 @@ class StarTracker:
         f_len_std = f_len_std / self._pixelX
 
         self.f_len = Parameter(ideal=f_len_px, stddev=f_len_std, mean=f_len_mean, name=f_len_mm.name, units='px')
-        self.f_len_dtemp = LensThermalEffect().temp_param
+        self.f_len_dtemp = Parameter(0, 0, 0, name='FOCAL_THERMAL_COEFFICIENT')
 
         self.params = {param.name:param for param in self.__all_params()}
 

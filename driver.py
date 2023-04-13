@@ -256,12 +256,9 @@ if __name__ == '__main__':
     RUN SIMULATION
     """
     start = time.perf_counter()
-    
     df = sim.run_sim(params=params, obj_func=obj_func)
-    df = df[df['CALC_ACCURACY'] > 0]    # removes bad guesses (purposefully set to -1)
-    end = time.perf_counter()
+    delta = time.perf_counter() - start
     
-    delta = end - start
     numFail = args.numberOfRuns - len(df.index)
     failRate = numFail/args.numberOfRuns
     
@@ -272,17 +269,6 @@ if __name__ == '__main__':
     logger.critical('{}FAILURE RATE: {}% ({}/{}){}\n'.format(c.GREEN, failRate*100, numFail, args.numberOfRuns, c.DEFAULT))
     logger.debug('{}SIM COLS:\n\n{}{}'.format(c.RED, sim.sim_data.columns, c.DEFAULT))
     logger.debug('{}SIM DATA:\n\n{}{}'.format(c.RED, sim.sim_data, c.DEFAULT))
-    
-    fmin = sim.sim_data.FOCAL_LENGTH.min()
-    fmax = sim.sim_data.FOCAL_LENGTH.max()
-    
-    fov = lambda x: np.rad2deg(np.arctan2(c.SENSOR_HEIGHT/2, x))
-
-    fovmin = fov(fmin)
-    fovmax = fov(fmax)
-
-    logger.debug('\n{}/{}\n'.format(fmin, fmax))
-    logger.debug('\n{}/{}\n'.format(fovmin, fovmax))
 
     """ 
     PLOT SIMULATION RESULTS

@@ -140,7 +140,7 @@ class StarTracker:
 
         self.eps_x = Parameter(0, .1, name='F_ARR_EPS_X')
         self.eps_y = Parameter(0, .1, name='F_ARR_EPS_Y')
-        self.eps_z = Parameter(0, 1, name='F_ARR_EPS_Z')
+        self.eps_z = Parameter(0, 5, name='F_ARR_EPS_Z')
 
         self.phi = Parameter(0, .01, name='F_ARR_PHI')
         self.theta = Parameter(0, .01, name='F_ARR_THETA')
@@ -152,6 +152,7 @@ class StarTracker:
         self.distortion = self.__set_parameter(distortion, "DISTORTION")
         
         self.sensor = Parameter(AVG_NUM_STARS, STD_NUM_STARS, 0, name="NUM_STARS_SENSOR", units="", retVal=lambda x: np.max([1, int(x)]))
+        self.mag_sensor = Parameter(6, 0.5, 0, name="MAX_MAGNITUDE", units="")
         
         f_len_mm = self.__set_parameter(focal_length, "FOCAL_LENGTH")
         f_len_mean, f_len_std = f_len_mm.get_prob_distribution()
@@ -161,7 +162,8 @@ class StarTracker:
         f_len_mean = f_len_mean / self._pixelX
         f_len_std = f_len_std / self._pixelX
 
-        self.f_len = Parameter(ideal=f_len_px, stddev=f_len_std, mean=f_len_mean, name=f_len_mm.name, units='px')
+        # self.f_len = Parameter(ideal=f_len_px, stddev=f_len_std, mean=f_len_mean, name=f_len_mm.name, units='px')
+        self.f_len = Parameter(f_len_px, 0, 0, name=f_len_mm.name, units='px')
         self.f_len_dtemp = Parameter(0, 0, 0, name='FOCAL_THERMAL_COEFFICIENT')
 
         self.params = {param.name:param for param in self.__all_params()}
@@ -254,5 +256,5 @@ class StarTracker:
         return
     
     def __all_params(self)->tuple[Parameter]:
-        return [self.f_len, self.f_len_dtemp, self.sensor, self.array_tilt, self.distortion, self.ppt_acc, self.eps_x, self.eps_y, self.eps_z, self.phi, self.theta, self.psi]
+        return [self.f_len, self.f_len_dtemp, self.sensor, self.mag_sensor,self.array_tilt, self.distortion, self.ppt_acc, self.eps_x, self.eps_y, self.eps_z, self.phi, self.theta, self.psi]
             

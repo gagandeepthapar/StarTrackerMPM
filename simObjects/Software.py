@@ -80,7 +80,7 @@ class Software:
         with open(json_path) as fp_open:
             id_data = jsonload(fp_open)
 
-        min_acc = id_data['MIN_ACCURACY']
+        min_acc = 0.9#id_data['MIN_ACCURACY']
         ident = UniformParameter(min_acc, 1.0, name=name, units='Percent')
 
         return ident

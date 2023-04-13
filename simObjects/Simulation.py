@@ -15,7 +15,10 @@ from simObjects.Software import Software
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter, UniformParameter
 from simObjects.StarTracker import StarTracker
-from simObjects.AttitudeEstimation import Projection, QUEST
+from simObjects.AttitudeEstimation import QUEST
+from simObjects.generateProjection import generate_projection
+from copy import deepcopy
+
 
 import threading
 
@@ -38,6 +41,8 @@ class Simulation:
 
         self.sim_data = pd.DataFrame()
         self.params = {**self.camera.params, **self.software.params, **self.orbit.params}
+
+        self.catalog:pd.DataFrame = pd.read_pickle(c.BSC5PKL)
 
         self.obj_func_out = {
                                 self.sun_etal_star_mismatch:'STAR_ANGLE_MISMATCH',
@@ -78,7 +83,7 @@ class Simulation:
                 self.sim_data['CALC_ACCURACY'] = self.sim_data.apply(obj_func, axis=1)
 
         self.sim_data = self.sim_data[self.sim_data['CALC_ACCURACY'] < 3600]
-
+        self.sim_data = self.sim_data[self.sim_data['CALC_ACCURACY'] >= 0]
         return self.sim_data
 
     def plot_data(self)->None: # method to be overloaded
@@ -89,18 +94,16 @@ class Simulation:
         ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
         ax.set_ylabel('Number of Runs')
         ax.set_xlabel('Calculated Accuracy [arcsec]')
-        ax.set_title('Star Tracker Accuracy: {} +/-{} arcsec:\n{:,} Runs'.\
-                    format(np.round(self.sim_data['CALC_ACCURACY'].mean(),3),\
-                           np.round(self.sim_data['CALC_ACCURACY'].std(),3),
-                           self.num_runs))
+        ax.set_title('Star Tracker Accuracy\n{} +/-{} arcsec:\n{:,} Runs'.\
+                    format(np.round(self.sim_data['CALC_ACCURACY'].mean(),5),\
+                           np.round(self.sim_data['CALC_ACCURACY'].std(),5),
+                           self.num_runs), fontsize=40)
 
         param_fig = plt.figure()
-        param_fig.suptitle('Input Parameter Distribution')
+        param_fig.suptitle('Input Parameter Distribution', fontsize=40)
         # cam_sw_params = {**self.camera.params, **self.software.params}
         
-        cam_sw_params    = {"Focal Length [px]": self.camera.f_len,
-                         "Number of Stars": self.camera.sensor,
-                         r'$\epsilon_x$ [px]':self.camera.eps_x,
+        cam_sw_params    = {r'$\epsilon_x$ [px]':self.camera.eps_x,
                          r"$\epsilon_y$ [px]":self.camera.eps_y,
                          r"$\epsilon_z$ [px]":self.camera.eps_z,
                          r"$\phi$ [deg]":self.camera.phi,
@@ -112,7 +115,7 @@ class Simulation:
 
         # cam_sw_params = {param.name:param for param in param_list}
 
-        size = (int(len(cam_sw_params)/2)+1, 2)
+        size = (5, 2)
 
         
         for i, param in enumerate(list(cam_sw_params.keys())):
@@ -127,12 +130,12 @@ class Simulation:
             param_ax.set_title('{}: {} +/- {}'.\
                                 format(param,\
                                         np.round(param_data.mean(), 3),\
-                                        np.round(param_data.std(), 3)))
+                                        np.round(param_data.std(), 3)), fontsize=15)
 
             if param == 'FOCAL_LENGTH':
                 param_ax.axvline(self.camera.f_len.ideal, color='r', label='True Focal Length ({} px)'.format(np.round(self.camera.f_len.ideal,3)))
             
-            param_ax.legend()
+            # param_ax.legend()
 
         param_ax = param_fig.add_subplot(size[0], size[1], len(cam_sw_params)+1)
         param_ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
@@ -183,6 +186,28 @@ class Simulation:
     FIRST PRINCIPLES HARDWARE DEVIATION + QUEST FUNCTION
     """
 
+    def __PHI_S(self, cv_true:np.ndarray, sim_row:pd.Series)->np.ndarray:
+
+            phi = np.deg2rad(sim_row.F_ARR_PHI)
+            theta = np.deg2rad(sim_row.F_ARR_THETA)
+            psi = np.deg2rad(sim_row.F_ARR_PSI)
+            C_gamma_pi = c.Rx(phi) @ c.Ry(theta) @ c.Rz(psi)
+            
+            r_F_pi_gamma = np.array([sim_row.F_ARR_EPS_X, 
+                                sim_row.F_ARR_EPS_Y,
+                                sim_row.F_ARR_EPS_Z + sim_row.FOCAL_LENGTH])
+            
+            r_F_pi_pi = C_gamma_pi @ r_F_pi_gamma
+            r_S_F_pi = C_gamma_pi @ cv_true
+            lam_star = (-1 * r_F_pi_pi[2]) / (r_S_F_pi[2])
+            P_star = lam_star * r_S_F_pi + r_F_pi_pi
+            P_star[0] += sim_row.BASE_DEV_X
+            P_star[1] += sim_row.BASE_DEV_Y
+
+            s_hat = np.array([-P_star[0], -P_star[1], sim_row.FOCAL_LENGTH])
+
+            return s_hat / np.linalg.norm(s_hat)
+
     def quest_objective(self, sim_row:pd.DataFrame)->float:
         """
         evaluation of hardware by passing it through QUEST.
@@ -196,15 +221,31 @@ class Simulation:
 
         """
 
-        project = Projection(sim_row)
-        # logger.debug('{}STAR_FRAME:\n{}{}'.format(c.RED, project.frame.to_string(), c.DEFAULT))
+        fov = np.arctan2(c.SENSOR_HEIGHT/2, sim_row.FOCAL_LENGTH)
         
-        eci_real = project.frame['ECI_TRUE'].to_numpy()
-        cv_real = project.frame['CV_TRUE'].to_numpy()
-        cv_est = project.frame['CV_MEAS'].to_numpy()
-        q_real = project.quat_real
+        projection = generate_projection(self.catalog,
+                                         ra = sim_row.RIGHT_ASCENSION,
+                                         dec=sim_row.DECLINATION,
+                                         roll=sim_row.ROLL,
+                                         max_magnitude=sim_row.MAX_MAGNITUDE,
+                                         camera_fov=fov*2)
         
-        quest = QUEST(eci_real, cv_real, cv_est, sim_row.FAIL_IDENT_RATE,q_real)
+        if len(projection.index) <= 1:  # fail scenario with single sta
+            logger.critical('{}Failed Projection{}'.format(c.RED, c.DEFAULT))
+            return -1
+        
+        # print(len(projection.index))
+        # if type(projection) is int:
+        #     print(sim_row)
+        #     raise ValueError('empty df: {}'.format(projection))
+        
+        projection['CV_MEAS'] = projection['CV_TRUE'].apply(self.__PHI_S, args=(sim_row, ))
+
+        eci_real = projection['ECI_TRUE'].to_numpy()
+        cv_real = projection['CV_TRUE'].to_numpy()
+        cv_est = projection['CV_MEAS'].to_numpy()
+        
+        quest = QUEST(eci_real, cv_real, cv_est, sim_row.FAIL_IDENT_RATE)
 
         q_diff = quest.calc_acc()
         # logger.debug('{}Q_DIFF: {}{}'.format(c.RED, q_diff, c.DEFAULT))

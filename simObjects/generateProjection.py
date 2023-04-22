@@ -1,17 +1,36 @@
 import sys
 sys.path.append(sys.path[0] + '/..')
 
-import random
+# import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+
+# from AttitudeEstimation import QUEST
 
 import constants as c
 import logging
-
+import time
 
 logger = logging.getLogger(__name__)
+
+def plot_map(starlist:pd.DataFrame, ra:float, dec:float, fov:float):
+
+    fig = plt.figure()
+    ax = fig.add_subplot()
+
+    # starlist = starlist[starlist['v_magnitude'] >= 5]
+
+    ax.scatter(starlist.right_ascension, starlist.declination, s=1, color='black')
+    ax.scatter(ra, dec, color='red', marker='x', s=5)
+
+    ax.scatter(ra + fov/2, dec, color='red', marker='x', s=5)
+    ax.scatter(ra - fov/2, dec, color='red', marker='x', s=5)
+    ax.scatter(ra, dec + fov/2, color='red', marker='x', s=5)
+    ax.scatter(ra, dec - fov/2, color='red', marker='x', s=5)
+
+    plt.show()
+    return
 
 def ra_dec_to_eci(row:pd.Series)->np.ndarray:
     ra = row.right_ascension
@@ -22,19 +41,28 @@ def calc_fov(eci_vec:np.ndarray, boresight:np.ndarray)->float:
     dot_prod = boresight.dot(eci_vec)
     return np.arccos(dot_prod)
 
-def eci_to_cv(eci_vec:np.ndarray, ra:float, dec:float, roll:float, boresight:np.ndarray)->np.ndarray:
+def eci_to_cv_rotation(roll:float, boresight:np.ndarray)->np.ndarray:
 
-    apply_ra = c.Rz(-ra)
-    apply_dec = c.Ry(-(np.pi/2 - dec))
-    
-    unrolled_cv = apply_dec @ apply_ra @ eci_vec
-    
-    # Rodrigues Rotation Formula
-    rolled_cv = (np.cos(roll) * unrolled_cv) + \
-                np.sin(roll)*(np.cross(boresight, unrolled_cv)) + \
-                (1 - np.cos(roll))*(boresight.dot(unrolled_cv))*boresight
+    perp_vec = ra_dec_to_eci(pd.Series({'right_ascension': 0, 'declination': -np.pi/2}))
+    normal_vec = np.cross(boresight, perp_vec)
 
-    return  rolled_cv
+    k_hat = boresight / np.linalg.norm(boresight)
+    j_hat = normal_vec / np.linalg.norm(normal_vec)
+    i_hat = np.cross(j_hat, k_hat)
+
+    C_eci_cv = np.array([i_hat,
+                         j_hat,
+                         k_hat])
+    C_post_roll = c.Rz(roll) @ C_eci_cv
+    return C_post_roll
+
+def new_eci_cv(ra:float, dec:float, roll:float)->np.ndarray:
+
+    C_ra = c.Rz(-ra)
+    C_dec = c.Ry(dec - np.pi/2)
+    C_roll = c.Rz(roll)
+
+    return C_roll @ C_dec @ C_ra
 
 def generate_projection(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:float=0, camera_fov:float=np.deg2rad(30), max_magnitude:float=5)->pd.DataFrame:
 
@@ -43,28 +71,20 @@ def generate_projection(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:flo
     fstars = fstars.drop(columns=['spectral_type_a', 'spectral_type_b', 'ascension_proper_motion', 'declination_proper_motion'])
     
     # remove dim stars
-    # fstars = fstars[fstars['v_magnitude'] <= max_magnitude]
-
-    # update declination range
-    fstars['declination'] += np.pi/2
+    fstars = fstars[fstars['v_magnitude'] <= max_magnitude]
 
     # calc boresight
     boresight = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
 
-    # narrow list to single box
-    if (dec - camera_fov/2 < 0) or (dec + camera_fov/2 > np.pi):
-        fstars = fstars[(fstars['declination'] <= np.mod(dec + camera_fov/2, np.pi)) | (fstars['declination'] >= np.mod(dec - camera_fov/2, np.pi))]
-    else:
-        fstars = fstars[(fstars['declination'] <= np.mod(dec + camera_fov/2, np.pi)) & (fstars['declination'] >= np.mod(dec - camera_fov/2, np.pi))]
+    fstars = fstars[(fstars['declination'] + np.pi/2 <= np.mod(dec + camera_fov/2 + np.pi/2 , np.pi)) & (fstars['declination'] + np.pi/2 >= np.mod(dec - camera_fov/2 + np.pi/2 , np.pi))]
+    fstars = fstars[(fstars['right_ascension'] <= np.mod(ra + camera_fov/2, 2*np.pi)) & (fstars['right_ascension'] >= np.mod(ra - camera_fov/2, 2*np.pi))]
 
-    # print('{}\n{}'.format(len(fstars.index),fstars))
+    if len(fstars.index) <= 1:
+        # Failure to capture stars
+        logger.critical('{}FAILURE!{}'.format(c.RED, c.DEFAULT))
+        return pd.DataFrame({'ECI_TRUE':[],
+                             'CV_TRUE':[]})
 
-
-    if (ra - camera_fov/2 < 0) or (ra + camera_fov/2 > 2*np.pi):
-        fstars = fstars[(fstars['right_ascension'] <= np.mod(ra + camera_fov/2, 2*np.pi)) | (fstars['right_ascension'] >= np.mod(ra - camera_fov/2, 2*np.pi))]
-    else:
-        fstars = fstars[(fstars['right_ascension'] <= np.mod(ra + camera_fov/2, 2*np.pi)) & (fstars['right_ascension'] >= np.mod(ra - camera_fov/2, 2*np.pi))]
-    
     # set ECI vectors
     fstars['ECI_TRUE'] = fstars[['right_ascension', 'declination']].apply(ra_dec_to_eci, axis=1)
 
@@ -73,174 +93,127 @@ def generate_projection(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:flo
     fstars = fstars[fstars['FOV'] <= camera_fov/2]
     
     # set CV vectors
-    fstars['CV_TRUE'] = fstars['ECI_TRUE'].apply(eci_to_cv, args=(ra, dec, roll, boresight, ))
+    C_eci_cv = eci_to_cv_rotation(roll, boresight)
+    C_new = new_eci_cv(ra, dec, roll)
+    fstars['CV_TRUE'] = fstars['ECI_TRUE'].apply(lambda x: C_eci_cv @ x)
+    fstars['CV_NEW'] = fstars['ECI_TRUE'].apply(lambda x: C_new @ x)
 
     return fstars
 
-def plot_sphere(starlist:pd.DataFrame, ra:float, dec:float, roll:float, fov:float, img_wd:int, img_ht:int):
-
-    def get_cone(start:np.array, end:np.array, rad:float, size:int)->np.array:
-
-        def rotm(vec1:np.array, vec2:np.array)->np.array:
-                a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
-                v = np.cross(a, b)
-                c = np.dot(a, b)
-                s = np.linalg.norm(v)
-                kmat = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
-                rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
-                return rotation_matrix
-
-        h = np.linalg.norm(end-start)
-        t = np.linspace(0, 2*np.pi, num=size)
-        x = rad*np.cos(t)
-        y = rad*np.sin(t)
-        z = h*np.ones(size)
-
-        R = rotm(np.array([0, 0, 1]), end-start)
-
-        xr = np.zeros(size)
-        yr = np.zeros(size)
-        zr = np.zeros(size)
-
-        for i in range(size):
-            r = np.matmul(R, np.array([x[i], y[i], z[i]]))
-            xr[i] = r[0]
-            yr[i] = r[1]
-            zr[i] = r[2]
-        
-        filler = np.zeros(size)
-        X = np.array([filler, xr]).reshape((2,size))
-        Y = np.array([filler, yr]).reshape((2, size))
-        Z = np.array([filler, zr]).reshape((2, size))
-        
-        return np.array([X, Y, Z])
-
-    radec2vec = lambda ra, dec: np.array([np.cos(ra)*np.cos(dec),
-                                            np.sin(ra)*np.cos(dec),
-                                            np.sin(dec)])
-
-    bs = radec2vec(ra, dec)
-    bs_x = bs[0]
-    bs_y = bs[1]
-    bs_z = bs[2]
-
-    abs_cone = get_cone(np.array([0,0,0]), bs, np.tan(fov/2), 25)
-    rel_cone = get_cone(np.array([0, 0, 0]), np.array([1,0,0]), np.tan(fov/2), 25)
+def plot_frame(frame:pd.DataFrame, boresight:np.ndarray):
 
     fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+    # boresight = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
 
-    # 3D PLOT
-    ax = fig.add_subplot(2, 2, (1,3), projection='3d')
-
-    r = 1
+    # Sphere
     u, v = np.mgrid[0:2 * np.pi:30j, 0:np.pi:20j]
     x = np.cos(u) * np.sin(v)
     y = np.sin(u) * np.sin(v)
     z = np.cos(v)
     ax.plot_surface(x, y, z, cmap=plt.cm.YlGnBu_r, alpha=0.3)   # sphere
 
-    # absolute/ECI representation
-    ax.scatter3D(bs_x, bs_y, bs_z, color='red', marker='x') # absolute boresight
-    ab = ax.plot3D(np.array([0, bs_x]), np.array([0, bs_y]), np.array([0, bs_z]), color='red') # absolute boresight
-    ac = ax.plot_surface(abs_cone[0], abs_cone[1], abs_cone[2], color='red', alpha=0.5)  # absolute cone
+    ax.scatter(0, 0, 1, marker='x', s=30, color='black')
+    ax.scatter(*boresight, marker='x', s=30, color='black')
 
-    # relative representation
-    ax.scatter3D(1, 0, 0, color='blue', marker='x')
-    cb = ax.plot3D(np.array([0, 1]), np.array([0, 0]), np.array([0, 0]), color='blue')
-    ax.plot_surface(rel_cone[0], rel_cone[1], rel_cone[2], color='blue', alpha=0.5) 
+    ax.plot([0, 0], [0, 0], [0, 1], linestyle='dashed', color='red')
+    ax.plot([0, boresight[0]], [0, boresight[1]], [0, boresight[2]], linestyle='dashed', color='blue')
 
-    title = 'Celestial Sphere\nPointing at ({:.2f}\u00b0, {:.2f}\u00b0, {:.2f}\u00b0), Mv = {:.1f}'.format(ra*180/PI, dec*180/PI, roll*180/PI, MAXMAG)
+    for i, row in frame.iterrows():
+        cv = row.CV_TRUE
+        eci = row.ECI_TRUE
+        cvnew = row.CV_NEW
+
+        ax.scatter(*cv, marker='x', color='red')
+        ax.scatter(*cvnew, marker='^', color='green')
+        ax.scatter(*eci, marker='*', color='blue')
+
 
     ax.axis('equal')
-    ax.set_title(title)
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('z')
-
-    for i, row in starlist.iterrows():
-        ax.scatter3D(row['ECI_X'], row['ECI_Y'], row['ECI_Z'], color='red', marker='*') # absolute star
-        ax.scatter3D(row['CV_X'], row['CV_Y'], row['CV_Z'], color='blue', marker='*') # absolute star
-
-    # 2D Plot
-    ax = fig.add_subplot(2,2,2)
     
-    theta = np.linspace( 0 , 2 * np.pi , 150 )
-    radius = fov/2
-    x = radius * np.cos( theta )
-    y = radius * np.sin( theta )
-
-    c = img_wd/img_ht
-    rectY = -1*np.sqrt(fov**2 / (4*(c**2 +1)))
-    rectX = c*rectY
-    rect = Rectangle((rectX,rectY), 2*np.abs(rectX), 2*np.abs(rectY), color='black', fill=False)
-
-    ax.plot(x, y, '--b')
-    ax.scatter(0, 0, color='blue', marker='x')
-    ax.add_patch(rect)
-
-    ct = 0
-    for i, row in starlist.iterrows():
-        ax.scatter(-1*row['CV_Y'],row['CV_Z'], color='red', marker='*', alpha=0.1)
-        ax.scatter(-1*row['CV_X_ROLL'], row['CV_Y_ROLL'], color='black', marker='*',)
-        
-        label = 'ID {:d}'.format(int(row['catalog_number']))
-        ax.annotate(label, (-1*row['CV_X_ROLL'], row['CV_Y_ROLL']+0.01), fontsize=7)
-
-        ax.plot([-1*row['CV_Y'], -1*row['CV_X_ROLL']], [row['CV_Z'], row['CV_Y_ROLL']], alpha=0.1, color='black')
-
-        if rectX <= row['CV_X_ROLL'] and row['CV_X_ROLL'] <= rectX+(2*np.abs(rectX)):
-            if rectY <= row['CV_Y_ROLL'] and row['CV_Y_ROLL'] <= rectY+(2*np.abs(rectY)):
-                ct += 1
-
-    ax.axis('equal')
-    ax.set_xlabel('Relative Right Ascension, deg')
-    ax.set_ylabel('Relative Declination, deg')
-    ax.legend()
-
-    title = '{} of {} Stars Captured in Image'.format(ct, len(starlist.index))
-    ax.set_title(title)
-
-    # simulated image test
-    ax = fig.add_subplot(2,2,4)
-
-    rect = Rectangle((0,0), img_wd, img_ht, color='black')
-   
-    ax.add_patch(rect)
-    ax.scatter(img_wd/2, img_ht/2, color='red', marker='x')
-
-    check_x = lambda x: 0 <= x and x <= img_wd
-    check_y = lambda y: 0 <= y and y <= img_ht
-
-    for i, row in starlist.iterrows():
-        x = row['IMG_X']
-        y = row['IMG_Y']
-        if check_x(x) and check_y(y):
-            ax.scatter(x, y, color='white', marker='.')
-            label = 'ID {:d}'.format(int(row['catalog_number']))
-
-            ax.annotate(label, (x, y+40), fontsize=7, color='red') 
-
-    ax.axis('equal')
-    ax.legend()
-    ax.set_xlabel('IMAGE X [Pixels]')
-    ax.set_ylabel('IMAGE Y [Pixels]')
-    delta = 10
-    ax.set_xlim(0 - delta, img_wd + delta)
-    ax.set_ylim(0 - delta, img_ht + delta)
-    return plt
+    return
 
 if __name__ == '__main__':
-    # boresight
-    # ra = random.uniform(0, 2*np.pi)
-    # dec = random.uniform(0, np.pi)
-    # roll = random.uniform(-np.pi, np.pi)
+    N = 1000
 
-    ra = 4.954006
-    dec = 1.960962
-    roll = -0.475697
+    # boresight
+    ra = np.random.uniform(0, 2*np.pi)
+    dec = np.random.uniform(-np.pi/2, np.pi/2)
+    roll = np.random.uniform(-np.pi, np.pi)
+    
+    # ra = 0
+    # dec = 0
+    # roll = 0
+
+    
 
     # start projection process
-    starframe = pd.read_pickle(c.BSC5PKL)
-    fstars = generate_projection(starframe, ra, dec, roll)
-    print(fstars)
+    starframe:pd.DataFrame = pd.read_pickle(c.BSC5PKL)
+
+    # print(starframe.columns)
+    # print(starframe.v_magnitude.min())
+    # print(starframe.v_magnitude.max())
+
+    # ra = 3.361102
+    # dec = -0.158793
+    # roll = 0.388512
+    # mag = 4.233144
+    fov = 2 * np.arctan2(1024/2, 3316)
+
+    boresight = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
+
+    fs = generate_projection(starframe,ra, dec, roll, fov)
+    print(fs)
+    plot_frame(fs, boresight)
+
+    plt.show()
+
+    # plot_frame(fs, boresight)
+    # print('RA {}, DEC {}, ROLL {}\n{}'.format(np.rad2deg(ra), np.rad2deg(dec), np.rad2deg(roll), fs))
+    # plt.show()
+    # q4 = -(np.trace(C) + 1)**0.5 / 2
+    # q1 = C[1][2] - C[2][1] / (4 * q4)
+    # q2 = C[2][0] - C[0][2] / (4 * q4)
+    # q3 = C[0][1] - C[1][0] / (4 * q4)
+
+    # q = np.array([q1, q2, q3, q4])
+    # q = q / np.linalg.norm(q)
+    # print(q)
+    # print(np.linalg.norm(q))
+
+    # skew = lambda v: np.array([[0, -v[2], v[1]],
+    #                            [v[2], 0, -v[0]],
+    #                            [-v[1], v[0], 0]])
+
+    # Cprime = (2 * q[3]**2 - 1) * np.eye(3) + (2 * np.outer(q[:3], q[:3])) - (2 * q[3] * skew(q[:3]))
+
+    # print(Cprime)
+    # print(Cprime @ Cprime.T)
+    # print(Cprime.T @ Cprime)
+
+    # print(fstars)
+    # # print(np.cross(np.array([-1, 0, 0]), np.array([0, 0, -1])))
+    # print('RA: {}\nDEC: {}\n:ROLL: {}'.format(np.rad2deg(ra), np.rad2deg(dec), np.rad2deg(roll)))
+    # plt.show()
+    # print(ra_dec_to_eci(pd.Series({'right_ascension': 0, 'declination': np.pi/2})))
+
+    # apply_ra = c.Rz(-ra)
+    # apply_dec = c.Ry(-(np.pi/2 - dec))
+    
+    
+    
+    # skew_sym = lambda v: np.array([[0, -v[2], v[1]],
+    #                                [v[2], 0, -v[0]],
+    #                                [-v[1], v[0], 0]])
+    # # Rodrigues Rotation Formula
+    # a_hat = skew_sym(boresight)
+    # # print(a_hat)
+    # apply_roll = np.eye(3) + np.sin(roll)*a_hat + (1 - np.cos(roll))*(a_hat**2)
+
+    # apply_roll = apply_roll
+
+    # C = apply_roll @ (apply_dec @ apply_ra)
+    # print('Rod C: {}'.format(C))
+    # print('Det: {}'.format(np.linalg.det(C)))
+    # print('Tpos: {}; {}'.format(C @ C.T, C.T @ C))
 

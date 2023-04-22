@@ -15,8 +15,8 @@ from simObjects.Software import Software
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter, UniformParameter
 from simObjects.StarTracker import StarTracker
-from simObjects.AttitudeEstimation import QUEST
-from simObjects.generateProjection import generate_projection
+from simObjects.AttitudeEstimation import QUEST, RandomProjection, StarProjection
+from simObjects.generateProjection import generate_projection, eci_to_cv_rotation, ra_dec_to_eci
 from copy import deepcopy
 
 
@@ -64,6 +64,10 @@ class Simulation:
 
         logger.debug('{}{} Objective Function{}'.format(c.RED,column, c.DEFAULT))
         
+        # print(self.sim_data.columns)
+        # raise ValueError
+
+        star_count = np.array([])
         match obj_func:    
             case self.sun_etal_star_mismatch:
                 
@@ -76,58 +80,64 @@ class Simulation:
                 self.sim_data['CALC_ACCURACY'] = np.max([np.abs(rng_max/2), np.abs(rng_min/2)])
             
             case self.quest_objective:
-                self.sim_data[column] = self.sim_data.apply(obj_func, axis=1)
+                self.sim_data[column] = self.sim_data.apply(obj_func, axis=1, )
                 self.sim_data['CALC_ACCURACY'] = self.sim_data[column]
+                # star_count = np.append(star_count, num_stars)
 
             case _:
                 self.sim_data['CALC_ACCURACY'] = self.sim_data.apply(obj_func, axis=1)
 
-        self.sim_data = self.sim_data[self.sim_data['CALC_ACCURACY'] < 3600]
+        # self.sim_data = self.sim_data[self.sim_data['CALC_ACCURACY'] < 3600]
+        # self.sim_data['NUM_STARS'] = star_count
         self.sim_data = self.sim_data[self.sim_data['CALC_ACCURACY'] >= 0]
+        
         return self.sim_data
 
-    def plot_data(self)->None: # method to be overloaded
+    def plot_data(self, data:pd.DataFrame=None)->None: # method to be overloaded
         
+        if data is None:
+            data = self.sim_data
+
         fig = plt.figure()
         ax = fig.add_subplot()
 
-        ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
+        ax.hist(data['CALC_ACCURACY'], bins=int(np.sqrt(len(data.index))))
         ax.set_ylabel('Number of Runs')
         ax.set_xlabel('Calculated Accuracy [arcsec]')
-        ax.set_title('Star Tracker Accuracy\n{} +/-{} arcsec:\n{:,} Runs'.\
-                    format(np.round(self.sim_data['CALC_ACCURACY'].mean(),5),\
-                           np.round(self.sim_data['CALC_ACCURACY'].std(),5),
-                           self.num_runs), fontsize=40)
+        ax.set_title('Star Tracker Accuracy\n{} +/- {} arcsec:\n{:,} Runs'.\
+                    format(np.round(data['CALC_ACCURACY'].mean(),5),\
+                           np.round(data['CALC_ACCURACY'].std(),5),
+                           len(data.index)), fontsize=40)
 
         param_fig = plt.figure()
         param_fig.suptitle('Input Parameter Distribution', fontsize=40)
         # cam_sw_params = {**self.camera.params, **self.software.params}
         
-        cam_sw_params    = {r'$\epsilon_x$ [px]':self.camera.eps_x,
+        cam_sw_params    = {"Number of Stars": self.camera.sensor,
+                         r"$\eta_X$ [px]":self.software.dev_x,
+                         r"$\eta_Y$ [px]":self.software.dev_y,
+                         r'$\epsilon_x$ [px]':self.camera.eps_x,
                          r"$\epsilon_y$ [px]":self.camera.eps_y,
                          r"$\epsilon_z$ [px]":self.camera.eps_z,
                          r"$\phi$ [deg]":self.camera.phi,
                          r"$\theta$ [deg]":self.camera.theta,
-                         r"$\psi$ [deg]":self.camera.psi,
-                         "Centroid-X Deviation [px]":self.software.dev_x,
-                         "Centroid-Y Deviation [px]":self.software.dev_y,
-                         "Identification Performance [%]":self.software.fail_ident}
+                         r"$\psi$ [deg]":self.camera.psi}
+                        #  "Identification Performance [%]":self.software.fail_ident}
 
         # cam_sw_params = {param.name:param for param in param_list}
 
-        size = (5, 2)
-
+        size = (3,3)
         
         for i, param in enumerate(list(cam_sw_params.keys())):
 
-            param_data = self.sim_data[cam_sw_params[param].name]
+            param_data = data[cam_sw_params[param].name]
 
             param_ax = param_fig.add_subplot(size[0], size[1], i+1)
 
-            if i%2 == 0: param_ax.set_ylabel('Number of Runs')
+            if i%3 == 0: param_ax.set_ylabel('Number of Runs')
 
-            param_ax.hist(param_data, bins=int(np.sqrt(self.num_runs)))
-            param_ax.set_title('{}: {} +/- {}'.\
+            param_ax.hist(param_data, bins=int(np.sqrt(len(data.index))))
+            param_ax.set_title('{}:\n{} +/- {}'.\
                                 format(param,\
                                         np.round(param_data.mean(), 3),\
                                         np.round(param_data.std(), 3)), fontsize=15)
@@ -137,14 +147,14 @@ class Simulation:
             
             # param_ax.legend()
 
-        param_ax = param_fig.add_subplot(size[0], size[1], len(cam_sw_params)+1)
-        param_ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
-        param_ax.set_ylabel('Number of Runs')
-        param_ax.set_xlabel('Calculated Accuracy [arcsec]')
-        param_ax.set_title('Star Tracker Accuracy: {} +/-{} arcsec:\n{:,} Runs'.\
-                    format(np.round(self.sim_data['CALC_ACCURACY'].mean(),3),\
-                           np.round(self.sim_data['CALC_ACCURACY'].std(),3),
-                           self.num_runs))
+        # param_ax = param_fig.add_subplot(size[0], size[1], len(cam_sw_params)+1)
+        # param_ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
+        # param_ax.set_ylabel('Number of Runs')
+        # param_ax.set_xlabel('Calculated Accuracy [arcsec]')
+        # param_ax.set_title('Star Tracker Accuracy: {} +/-{} arcsec:\n{:,} Runs'.\
+        #             format(np.round(self.sim_data['CALC_ACCURACY'].mean(),3),\
+        #                    np.round(self.sim_data['CALC_ACCURACY'].std(),3),
+        #                    self.num_runs))
 
         # print(len(self.sim_data.index))
 
@@ -186,28 +196,6 @@ class Simulation:
     FIRST PRINCIPLES HARDWARE DEVIATION + QUEST FUNCTION
     """
 
-    def __PHI_S(self, cv_true:np.ndarray, sim_row:pd.Series)->np.ndarray:
-
-            phi = np.deg2rad(sim_row.F_ARR_PHI)
-            theta = np.deg2rad(sim_row.F_ARR_THETA)
-            psi = np.deg2rad(sim_row.F_ARR_PSI)
-            C_gamma_pi = c.Rx(phi) @ c.Ry(theta) @ c.Rz(psi)
-            
-            r_F_pi_gamma = np.array([sim_row.F_ARR_EPS_X, 
-                                sim_row.F_ARR_EPS_Y,
-                                sim_row.F_ARR_EPS_Z + sim_row.FOCAL_LENGTH])
-            
-            r_F_pi_pi = C_gamma_pi @ r_F_pi_gamma
-            r_S_F_pi = C_gamma_pi @ cv_true
-            lam_star = (-1 * r_F_pi_pi[2]) / (r_S_F_pi[2])
-            P_star = lam_star * r_S_F_pi + r_F_pi_pi
-            P_star[0] += sim_row.BASE_DEV_X
-            P_star[1] += sim_row.BASE_DEV_Y
-
-            s_hat = np.array([-P_star[0], -P_star[1], sim_row.FOCAL_LENGTH])
-
-            return s_hat / np.linalg.norm(s_hat)
-
     def quest_objective(self, sim_row:pd.DataFrame)->float:
         """
         evaluation of hardware by passing it through QUEST.
@@ -221,37 +209,34 @@ class Simulation:
 
         """
 
-        fov = np.arctan2(c.SENSOR_HEIGHT/2, sim_row.FOCAL_LENGTH)
-        
-        projection = generate_projection(self.catalog,
-                                         ra = sim_row.RIGHT_ASCENSION,
-                                         dec=sim_row.DECLINATION,
-                                         roll=sim_row.ROLL,
-                                         max_magnitude=sim_row.MAX_MAGNITUDE,
-                                         camera_fov=fov*2)
-        
-        if len(projection.index) <= 1:  # fail scenario with single sta
-            logger.critical('{}Failed Projection{}'.format(c.RED, c.DEFAULT))
+        # Real Star Catalog
+        projection = StarProjection(sim_row, self.catalog)
+
+        # Random Stars in FOV
+        # projection = RandomProjection(sim_row)
+
+        if len(projection.frame.index) <= 1:
             return -1
-        
-        # print(len(projection.index))
-        # if type(projection) is int:
-        #     print(sim_row)
-        #     raise ValueError('empty df: {}'.format(projection))
-        
-        projection['CV_MEAS'] = projection['CV_TRUE'].apply(self.__PHI_S, args=(sim_row, ))
 
-        eci_real = projection['ECI_TRUE'].to_numpy()
-        cv_real = projection['CV_TRUE'].to_numpy()
-        cv_est = projection['CV_MEAS'].to_numpy()
-        
-        quest = QUEST(eci_real, cv_real, cv_est, sim_row.FAIL_IDENT_RATE)
+        # update data for number of stars generated
+        sim_row.NUM_STARS = len(projection.frame.index)
 
-        q_diff = quest.calc_acc()
-        # logger.debug('{}Q_DIFF: {}{}'.format(c.RED, q_diff, c.DEFAULT))
+        # QUEST
+        eci_real = projection.frame['ECI_TRUE'].to_numpy()
+        cv_real = projection.frame['CV_TRUE'].to_numpy()
+        cv_est = projection.frame['CV_MEAS'].to_numpy()
+        quest = QUEST(eci_real, cv_real, cv_est, q=projection.quat_real)
+
+        try:
+            q_diff = quest.calc_acc()    
+
+        except ValueError:
+            print('{}SIM DATA:{}\n{}'.format(c.GREEN, c.DEFAULT, sim_row))
+            
+            return -1
 
         return q_diff
-
+    
     """ 
     SUN ET AL STAR LOCATION -> QUEST FUNCTION
     """

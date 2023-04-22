@@ -7,10 +7,10 @@ import numpy as np
 curFile = os.path.abspath(os.path.dirname(__file__))
 
 """ CAMERA CONFIGS """
-IDEAL_CAM = os.path.join(curFile, 'utils/', 'idealCamera.json')
-SUNETAL_CAM = os.path.join(curFile, 'utils/', 'sunEtalCamera.json')
-ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
-BAD_CAM = os.path.join(curFile, 'utils/', 'badCamera.json')
+IDEAL_CAM = os.path.join(curFile, 'utils/', 'cameraIdeal.json')
+BASIC_CAM = os.path.join(curFile, 'utils/', 'cameraBasic.json')
+POOR_CAM = os.path.join(curFile, 'utils/', 'cameraPoor.json')
+
 """ SOFTWARE CONFIGS """
 IDEAL_CENTROID = os.path.join(curFile, 'utils/', 'idealCentroid.json')
 SIMPLE_CENTROID = os.path.join(curFile, 'utils/', 'simpleCentroid.json')
@@ -76,6 +76,21 @@ def asind(val:float)->float:
 
 def atand(val:float)->float:
     return np.rad2deg(np.arctan(val))
+
+def Rx(phi:float)->np.ndarray:
+    return np.array([[1, 0, 0],
+                        [0, np.cos(phi), -np.sin(phi)],
+                        [0, np.sin(phi), np.cos(phi)]])
+
+def Ry(theta:float)->np.ndarray:
+    return np.array([[np.cos(theta), 0, np.sin(theta)],
+                        [0, 1, 0],
+                        [-np.sin(theta), 0, np.cos(theta)]])
+
+def Rz(psi:float)->np.ndarray:
+    return np.array([[np.cos(psi), -np.sin(psi), 0],
+                        [np.sin(psi), np.cos(psi), 0],
+                        [0, 0, 1]])
 
 """ CONSTANTS """
 SENSOR_WIDTH = 1024

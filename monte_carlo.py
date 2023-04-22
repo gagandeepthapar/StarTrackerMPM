@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 import constants as c
 from simObjects.Simulation import Simulation
-from simObjects.AttitudeEstimation import QUEST, Projection
+from simObjects.AttitudeEstimation import QUEST, RandomProjection
 from simObjects.Software import Software
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
@@ -30,17 +30,22 @@ class MonteCarlo(Simulation):
         self.__create_data()
         return super().run_sim(params=params, obj_func=obj_func)
 
-    def plot_data(self, *kwargs) -> None:
-        return super().plot_data()
+    def plot_data(self, data:pd.DataFrame, *kwargs) -> None:
+        return super().plot_data(data)
     
     def __create_data(self)->pd.DataFrame:
 
+        fov = np.deg2rad(10)
+
         # randomize all data from components
+        q_data = pd.DataFrame({'RIGHT_ASCENSION': np.random.uniform(fov, 2*np.pi - fov, self.num_runs),
+                              'DECLINATION': np.random.uniform(-np.pi/2 + fov, np.pi/2 - fov, self.num_runs),
+                              'ROLL': np.random.uniform(-np.pi, np.pi, self.num_runs)})
         f_data = self.camera.randomize(num=self.num_runs)
         c_data = self.software.randomize(num=self.num_runs)
         o_data = self.orbit.randomize(num=self.num_runs)
 
-        self.sim_data = pd.concat([f_data, c_data, o_data], axis=1)
+        self.sim_data = pd.concat([q_data, f_data, c_data, o_data], axis=1)
         
         # update focal_length based on temperature
         df_dtemp = self.sim_data['FOCAL_LENGTH'] * (self.sim_data['D_TEMP'] * self.sim_data['FOCAL_THERMAL_COEFFICIENT'])

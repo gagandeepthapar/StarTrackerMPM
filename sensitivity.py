@@ -9,7 +9,7 @@ from copy import deepcopy
 
 import constants as c
 from simObjects.Simulation import Simulation
-from simObjects.AttitudeEstimation import QUEST, Projection
+from simObjects.AttitudeEstimation import QUEST, RandomProjection
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
@@ -81,11 +81,14 @@ class Sensitivity(Simulation):
             param_names = [param_names]
 
         # idealize parameters from components
+        q_data = pd.DataFrame({'RIGHT_ASCENSION': np.random.uniform(0, 2*np.pi, self.num_runs),
+                        'DECLINATION': np.random.uniform(0, np.pi, self.num_runs),
+                        'ROLL': np.random.uniform(-np.pi, np.pi, self.num_runs)})
         f_data = self.camera.ideal(num=self.num_runs)
         c_data = self.software.ideal(num=self.num_runs)
         o_data = self.orbit.ideal(num=self.num_runs)
 
-        self.sim_data = pd.concat([f_data, c_data,o_data], axis=1)
+        self.sim_data = pd.concat([q_data, f_data, c_data,o_data], axis=1)
 
         # modulate all indicated params in argument
         for param in param_names:

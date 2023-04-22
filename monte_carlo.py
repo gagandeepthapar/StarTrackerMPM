@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 import constants as c
 from simObjects.Simulation import Simulation
-from simObjects.AttitudeEstimation import QUEST, Projection
+from simObjects.AttitudeEstimation import QUEST, RandomProjection
 from simObjects.Software import Software
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
@@ -30,14 +30,16 @@ class MonteCarlo(Simulation):
         self.__create_data()
         return super().run_sim(params=params, obj_func=obj_func)
 
-    def plot_data(self, *kwargs) -> None:
-        return super().plot_data()
+    def plot_data(self, data:pd.DataFrame, *kwargs) -> None:
+        return super().plot_data(data)
     
     def __create_data(self)->pd.DataFrame:
 
+        fov = np.deg2rad(10)
+
         # randomize all data from components
-        q_data = pd.DataFrame({'RIGHT_ASCENSION': np.random.uniform(0, 2*np.pi, self.num_runs),
-                              'DECLINATION': np.random.uniform(0, np.pi, self.num_runs),
+        q_data = pd.DataFrame({'RIGHT_ASCENSION': np.random.uniform(fov, 2*np.pi - fov, self.num_runs),
+                              'DECLINATION': np.random.uniform(-np.pi/2 + fov, np.pi/2 - fov, self.num_runs),
                               'ROLL': np.random.uniform(-np.pi, np.pi, self.num_runs)})
         f_data = self.camera.randomize(num=self.num_runs)
         c_data = self.software.randomize(num=self.num_runs)

@@ -9,7 +9,7 @@ from copy import deepcopy
 
 import constants as c
 from simObjects.Simulation import Simulation
-from simObjects.AttitudeEstimation import QUEST, Projection
+from simObjects.AttitudeEstimation import QUEST, RandomProjection
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker

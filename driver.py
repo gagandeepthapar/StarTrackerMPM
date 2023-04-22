@@ -10,7 +10,7 @@ import constants as c
 import monte_carlo as mc
 import sensitivity as sense
 
-from simObjects.AttitudeEstimation import QUEST, Projection
+from simObjects.AttitudeEstimation import QUEST, RandomProjection
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
 from simObjects.Simulation import Simulation
@@ -297,6 +297,7 @@ if __name__ == '__main__':
     """
     if args.plot:
         # df.CALC_ACCURACY.hist(bins=100)
-        sim.plot_data(params)
+        sim.plot_data(fin_df)
+        # sim.plot
         
         plt.show()

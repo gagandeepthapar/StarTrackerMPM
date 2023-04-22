@@ -1,0 +1,20 @@
+{
+    "CAMERA_NAME": "IDEAL_CAMERA",
+
+    "FOCAL_LENGTH_AVERAGE": 3316,
+    
+    "F_ARR_EPS_X_STD": 0,
+    "F_ARR_EPS_Y_STD": 0,
+    "F_ARR_EPS_Z_STD": 0,
+
+    "F_ARR_PHI_STD": 0,
+    "F_ARR_THETA_STD": 0,
+    "F_ARR_PSI_STD": 0,
+
+    "MAX_MAGNITUDE_AVERAGE": 10000000,
+    "MAX_MAGNITUDE_STD": 0,
+    
+    "NUM_STARS_AVERAGE": 7,
+    "NUM_STARS_STD": 0
+
+}

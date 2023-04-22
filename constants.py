@@ -7,10 +7,10 @@ import numpy as np
 curFile = os.path.abspath(os.path.dirname(__file__))
 
 """ CAMERA CONFIGS """
-IDEAL_CAM = os.path.join(curFile, 'utils/', 'idealCamera.json')
-SUNETAL_CAM = os.path.join(curFile, 'utils/', 'sunEtalCamera.json')
-ALVIUM_CAM = os.path.join(curFile, 'utils/', 'alviumCamera.json')
-BAD_CAM = os.path.join(curFile, 'utils/', 'badCamera.json')
+IDEAL_CAM = os.path.join(curFile, 'utils/', 'cameraIdeal.json')
+BASIC_CAM = os.path.join(curFile, 'utils/', 'cameraBasic.json')
+POOR_CAM = os.path.join(curFile, 'utils/', 'cameraPoor.json')
+
 """ SOFTWARE CONFIGS """
 IDEAL_CENTROID = os.path.join(curFile, 'utils/', 'idealCentroid.json')
 SIMPLE_CENTROID = os.path.join(curFile, 'utils/', 'simpleCentroid.json')

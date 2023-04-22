@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.append(sys.path[0] + '/..')
-import json
+from json import load as jsonload
 
 import constants as c
 
@@ -117,54 +117,45 @@ class StarVisibility:
 
 class StarTracker:
 
-    def __init__(self, principal_point_accuracy:Parameter=None,
-                       focal_length:Parameter=None,
-                       array_tilt:Parameter=None,
-                       distortion:Parameter=None,
+    # def __init__(self, principal_point_accuracy:Parameter=None,
+    #                    focal_length:Parameter=None,
+    #                    array_tilt:Parameter=None,
+    #                    distortion:Parameter=None,
+    #                    sensor:Parameter=None,
+    #                    cam_name:str='IDEAL_CAM',
+    #                    cam_json:str=c.IDEAL_CAM)->None:
+
+    def __init__(self, focal_length:Parameter=None,
+                       eps_x:Parameter=None,
+                       eps_y:Parameter=None,
+                       eps_z:Parameter=None,
+                       phi:Parameter=None,
+                       theta:Parameter=None,
+                       psi:Parameter=None,
+                       star_count:Parameter=None,
                        sensor:Parameter=None,
-                       cam_name:str='IDEAL_CAM',
-                       cam_json:str=c.IDEAL_CAM)->None:
+                       cam_json:str=c.IDEAL_CAM,
+                       cam_name:str="IDEAL_CAM"):
 
         # open cam property file
         self.camJSON = cam_json
         self.cam_name = self.__set_name(cam_name)
 
-        # set properties of camera
-        # self.eps_x = Parameter(0, 0, name='F_ARR_EPS_X')
-        # self.eps_y = Parameter(0, 0, name='F_ARR_EPS_Y')
-        # self.eps_z = Parameter(0, 0, name='F_ARR_EPS_Z')
-
-        # self.phi = Parameter(0, 0, name='F_ARR_PHI')
-        # self.theta = Parameter(0, 0, name='F_ARR_THETA')
-        # self.psi = Parameter(0, 0, name='F_ARR_PSI')
-
-        self.eps_x = Parameter(0, .1, name='F_ARR_EPS_X')
-        self.eps_y = Parameter(0, .1, name='F_ARR_EPS_Y')
-        self.eps_z = Parameter(0, 5, name='F_ARR_EPS_Z')
-
-        self.phi = Parameter(0, .01, name='F_ARR_PHI')
-        self.theta = Parameter(0, .01, name='F_ARR_THETA')
-        self.psi = Parameter(0, .01, name='F_ARR_PSI')
-
-
-        self.ppt_acc = self.__set_parameter(principal_point_accuracy, "PRINCIPAL_POINT_ACCURACY")
-        self.array_tilt = self.__set_parameter(array_tilt, "FOCAL_ARRAY_INCLINATION")
-        self.distortion = self.__set_parameter(distortion, "DISTORTION")
-        
-        self.sensor = Parameter(AVG_NUM_STARS, STD_NUM_STARS, 0, name="NUM_STARS_SENSOR", units="", retVal=lambda x: np.max([1, int(x)]))
-        self.mag_sensor = Parameter(6, 0.5, 0, name="MAX_MAGNITUDE", units="")
-        
-        f_len_mm = self.__set_parameter(focal_length, "FOCAL_LENGTH")
-        f_len_mean, f_len_std = f_len_mm.get_prob_distribution()
-        self._fov = self.__set_img_fov(f_len_mm=f_len_mm)
-
-        f_len_px = f_len_mm.ideal / self._pixelX
-        f_len_mean = f_len_mean / self._pixelX
-        f_len_std = f_len_std / self._pixelX
-
-        # self.f_len = Parameter(ideal=f_len_px, stddev=f_len_std, mean=f_len_mean, name=f_len_mm.name, units='px')
-        self.f_len = Parameter(f_len_px, 0, 0, name=f_len_mm.name, units='px')
+        self.f_len = self.__set_parameter(focal_length, "FOCAL_LENGTH")
         self.f_len_dtemp = Parameter(0, 0, 0, name='FOCAL_THERMAL_COEFFICIENT')
+        
+        self.eps_x = self.__set_parameter(eps_x, "F_ARR_EPS_X")
+        self.eps_y = self.__set_parameter(eps_y, "F_ARR_EPS_Y")
+        self.eps_z = self.__set_parameter(eps_z, "F_ARR_EPS_Z")
+
+        self.phi = self.__set_parameter(phi, "F_ARR_PHI")
+        self.theta = self.__set_parameter(theta, "F_ARR_THETA")
+        self.psi = self.__set_parameter(psi, "F_ARR_PSI")
+
+        self.sensor = self.__set_parameter(star_count, "NUM_STARS")
+        self.sensor.retVal = lambda x: np.max([1, x])
+
+        self.mag_sensor = self.__set_parameter(sensor, "MAX_MAGNITUDE")
 
         self.params = {param.name:param for param in self.__all_params()}
 
@@ -174,15 +165,10 @@ class StarTracker:
         return
 
     def __repr__(self):
-        cname = "Camera: {}"\
-                "\n\t{}"\
-                "\n\t{}"\
-                "\n\t{}"\
-                "\n\t{}\n".format(self.cam_name,
-                            repr(self.f_len),
-                            repr(self.ppt_acc),
-                            repr(self.array_tilt),
-                            repr(self.distortion))
+        cname = f"Camera: {self.cam_name}"
+
+        for param in self.__all_params():
+            cname += f"\n\t{repr(param)}"
 
         return cname
 
@@ -190,20 +176,30 @@ class StarTracker:
         if cam_name is not None:
             return cam_name
         
-        js = json.load(open(self.camJSON))
+        js = jsonload(open(self.camJSON))
         return js['CAMERA_NAME']
 
     def __set_parameter(self, parameter:Parameter, name:str)->Parameter:
         if parameter is not None:
             return parameter
 
-        return Parameter.init_from_json(self.camJSON, name)
+        return self.__init_from_json(self.camJSON, name)
+
+    def __init_from_json(self, json:str, name)->Parameter:
+        
+        with open(json) as fp_open:
+            camDict:dict = jsonload(fp_open)
+            
+        ideal = camDict.get(name+"_AVERAGE", 0)
+        stddev = camDict.get(name+"_STD", 0)
+
+        return Parameter(ideal=ideal, stddev=stddev, name=name)
 
     def __set_img_fov(self, f_len_mm)->float:
 
         f_len = f_len_mm
 
-        cam = json.load(open(self.camJSON))
+        cam = jsonload(open(self.camJSON))
 
         self._imgX = cam['IMAGE_WIDTH']
         self._imgY = cam['IMAGE_HEIGHT']
@@ -256,5 +252,6 @@ class StarTracker:
         return
     
     def __all_params(self)->tuple[Parameter]:
-        return [self.f_len, self.f_len_dtemp, self.sensor, self.mag_sensor,self.array_tilt, self.distortion, self.ppt_acc, self.eps_x, self.eps_y, self.eps_z, self.phi, self.theta, self.psi]
+        # return [self.f_len, self.f_len_dtemp, self.sensor, self.mag_sensor,self.array_tilt, self.distortion, self.ppt_acc, self.eps_x, self.eps_y, self.eps_z, self.phi, self.theta, self.psi]
+        return [self.f_len, self.f_len_dtemp, self.sensor, self.mag_sensor, self.eps_x, self.eps_y, self.eps_z, self.phi, self.theta, self.psi]
             

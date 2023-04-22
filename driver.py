@@ -255,18 +255,40 @@ if __name__ == '__main__':
     """ 
     RUN SIMULATION
     """
+    fin_df = pd.DataFrame()
+    count = 0
     start = time.perf_counter()
-    df = sim.run_sim(params=params, obj_func=obj_func)
+    
+    std_ratio = 1
+    prev_std = 1
+
+    # continuously run new sims until tolerance is met or 1M solutions calculated
+    while std_ratio > 1e-4 and len(fin_df.index) <= 1_000_0:
+        count += 1
+        df = sim.run_sim(params=params, obj_func=obj_func).copy()
+        if count == 1:
+            fin_df = df
+        
+        else:
+            fin_df = pd.concat([fin_df, df], axis=0)
+        
+        std_ratio = np.abs((prev_std - fin_df.CALC_ACCURACY.std())/prev_std)
+        prev_std = fin_df.CALC_ACCURACY.std()
+        
+        print(f'Run:\n\tCount: {count}\n\t\n\tSize: {len(fin_df.index)}\n\tMean: {fin_df.CALC_ACCURACY.mean()}\n\tNew STD: {df.CALC_ACCURACY.std()}\n\tFull STD: {prev_std}\n\tRatio: {std_ratio}')
+        
+
+
     delta = time.perf_counter() - start
     
-    numFail = args.numberOfRuns - len(df.index)
-    failRate = numFail/args.numberOfRuns
+    numFail = args.numberOfRuns*count - len(fin_df.index)
+    failRate = numFail/(args.numberOfRuns * count)
     
     logger.critical('{}TOTAL TIME: {} s{}'.format(c.GREEN, delta, c.DEFAULT))
     logger.critical('{}PER RUN TIME: {} ms{}'.format(c.GREEN, delta/args.numberOfRuns * 1000, c.DEFAULT))
     logger.critical('{}MEAN ACC: {}\"{}'.format(c.GREEN, df.CALC_ACCURACY.mean(), c.DEFAULT))
     logger.critical('{}STD ACC: {}\"{}'.format(c.GREEN, df.CALC_ACCURACY.std(), c.DEFAULT))
-    logger.critical('{}FAILURE RATE: {}% ({}/{}){}\n'.format(c.GREEN, failRate*100, numFail, args.numberOfRuns, c.DEFAULT))
+    logger.critical('{}FAILURE RATE: {}% ({}/{}){}\n'.format(c.GREEN, failRate*100, numFail, args.numberOfRuns*count, c.DEFAULT))
     logger.debug('{}SIM COLS:\n\n{}{}'.format(c.RED, sim.sim_data.columns, c.DEFAULT))
     logger.debug('{}SIM DATA:\n\n{}{}'.format(c.RED, sim.sim_data, c.DEFAULT))
 

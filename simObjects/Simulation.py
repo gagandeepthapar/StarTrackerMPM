@@ -13,15 +13,11 @@ import matplotlib.pyplot as plt
 import constants as c
 from simObjects.Software import Software
 from simObjects.Orbit import Orbit
-from simObjects.Parameter import Parameter, UniformParameter
 from simObjects.StarTracker import StarTracker
-from simObjects.AttitudeEstimation import QUEST, RandomProjection, StarProjection
-from simObjects.generateProjection import generate_projection, eci_to_cv_rotation, ra_dec_to_eci
-from copy import deepcopy
-
+from simObjects.AttitudeEstimation import QUEST
+from simObjects.Projection import Projection, RandomProjection, StarProjection
 
 import threading
-
 logger = logging.getLogger(__name__)
 
 class Simulation:
@@ -46,10 +42,11 @@ class Simulation:
 
         self.obj_func_out = {
                                 self.sun_etal_star_mismatch:'STAR_ANGLE_MISMATCH',
-                                self.quest_objective:'QUATERNION_ERROR',
-                                self.sun_etal_quest:'QUATERNION_ERROR'
+                                self.quest_objective:'QUATERNION_ERROR_[arcsec]',
+                                self.phi_model:'ANGULAR_SEPARATION_[arcsec]'
                             }
 
+        self.output_name:str=None
         return
 
     def __repr__(self)->str:
@@ -60,54 +57,52 @@ class Simulation:
         if obj_func is None or obj_func not in list(self.obj_func_out.keys()):
             obj_func = self.sun_etal_star_mismatch
 
-        column = self.obj_func_out.get(obj_func)
+        self.output_name = self.obj_func_out.get(obj_func, 'CALC_ACCURACY')
+         
 
-        logger.debug('{}{} Objective Function{}'.format(c.RED,column, c.DEFAULT))
-        
-        # print(self.sim_data.columns)
-        # raise ValueError
+        logger.debug('{}{} Objective Function{}'.format(c.RED,self.output_name, c.DEFAULT))
 
-        star_count = np.array([])
         match obj_func:    
             case self.sun_etal_star_mismatch:
                 
-                self.sim_data[column] = self.sim_data.apply(obj_func, axis=1)
-                mean = self.sim_data[column].mean()
-                std = self.sim_data[column].std()
+                self.sim_data[self.output_name] = self.sim_data.apply(obj_func, axis=1)
+                mean = self.sim_data[self.output_name].mean()
+                std = self.sim_data[self.output_name].std()
                 rng_min = mean - 3*std
                 rng_max = mean + 3*std
                 
                 self.sim_data['CALC_ACCURACY'] = np.max([np.abs(rng_max/2), np.abs(rng_min/2)])
-            
-            case self.quest_objective:
-                self.sim_data[column] = self.sim_data.apply(obj_func, axis=1, )
-                self.sim_data['CALC_ACCURACY'] = self.sim_data[column]
-                # star_count = np.append(star_count, num_stars)
 
             case _:
-                self.sim_data['CALC_ACCURACY'] = self.sim_data.apply(obj_func, axis=1)
+                self.sim_data[self.output_name] = self.sim_data.apply(obj_func, axis=1)
 
-        # self.sim_data = self.sim_data[self.sim_data['CALC_ACCURACY'] < 3600]
-        # self.sim_data['NUM_STARS'] = star_count
-        self.sim_data = self.sim_data[self.sim_data['CALC_ACCURACY'] >= 0]
+        # logger.critical(len(self.sim_data.index))
+        # logger.critical(self.sim_data[self.output_name])
+        self.sim_data = self.sim_data[self.sim_data[self.output_name] >= 0]
         
+        # logger.critical(len(self.sim_data.index))
         return self.sim_data
 
-    def plot_data(self, data:pd.DataFrame=None)->None: # method to be overloaded
+    def plot_data(self, data:pd.DataFrame=None, true_std:float=None)->None: # method to be overloaded
         
         if data is None:
             data = self.sim_data
 
+        if true_std is None:
+            true_std = self.sim_data[self.output_name].std()
+            
         fig = plt.figure()
         ax = fig.add_subplot()
 
-        ax.hist(data['CALC_ACCURACY'], bins=int(np.sqrt(len(data.index))))
+        ax.hist(data[self.output_name], bins=int(np.sqrt(len(data.index))))
         ax.set_ylabel('Number of Runs')
-        ax.set_xlabel('Calculated Accuracy [arcsec]')
-        ax.set_title('Star Tracker Accuracy\n{} +/- {} arcsec:\n{:,} Runs'.\
-                    format(np.round(data['CALC_ACCURACY'].mean(),5),\
-                           np.round(data['CALC_ACCURACY'].std(),5),
-                           len(data.index)), fontsize=40)
+
+        ax.set_xlabel('{}'.format(self.output_name.replace('_', ' ').title()))
+        ax.set_title('{}\n{} +/- {}:\n{:,} Runs'.\
+                    format(self.output_name.title().replace('_', ' '),
+                           np.round(data[self.output_name].mean(),5),\
+                           np.round(true_std,5),
+                           len(data.index)), fontsize=30)
 
         param_fig = plt.figure()
         param_fig.suptitle('Input Parameter Distribution', fontsize=40)
@@ -122,9 +117,6 @@ class Simulation:
                          r"$\phi$ [deg]":self.camera.phi,
                          r"$\theta$ [deg]":self.camera.theta,
                          r"$\psi$ [deg]":self.camera.psi}
-                        #  "Identification Performance [%]":self.software.fail_ident}
-
-        # cam_sw_params = {param.name:param for param in param_list}
 
         size = (3,3)
         
@@ -144,19 +136,6 @@ class Simulation:
 
             if param == 'FOCAL_LENGTH':
                 param_ax.axvline(self.camera.f_len.ideal, color='r', label='True Focal Length ({} px)'.format(np.round(self.camera.f_len.ideal,3)))
-            
-            # param_ax.legend()
-
-        # param_ax = param_fig.add_subplot(size[0], size[1], len(cam_sw_params)+1)
-        # param_ax.hist(self.sim_data['CALC_ACCURACY'], bins=int(np.sqrt(self.num_runs)))
-        # param_ax.set_ylabel('Number of Runs')
-        # param_ax.set_xlabel('Calculated Accuracy [arcsec]')
-        # param_ax.set_title('Star Tracker Accuracy: {} +/-{} arcsec:\n{:,} Runs'.\
-        #             format(np.round(self.sim_data['CALC_ACCURACY'].mean(),3),\
-        #                    np.round(self.sim_data['CALC_ACCURACY'].std(),3),
-        #                    self.num_runs))
-
-        # print(len(self.sim_data.index))
 
         return
 
@@ -211,6 +190,7 @@ class Simulation:
 
         # Real Star Catalog
         projection = StarProjection(sim_row, self.catalog)
+        # visible = NoiseModel(projection.frame, sim_row)
 
         # Random Stars in FOV
         # projection = RandomProjection(sim_row)
@@ -236,6 +216,45 @@ class Simulation:
             return -1
 
         return q_diff
+    
+    """
+    PHI MODEL
+    """
+   
+    def phi_model(self, sim_row:pd.DataFrame)->float:
+        """
+        evaluation of hardware by passing it through QUEST.
+        Exploitation of Camera Pinhole Model        
+
+        Args:
+            sim_row (pd.DataFrame): row item from data set containing information about star tracker hardware and centroiding ability
+
+        Returns:
+            float: calculated accuracy
+
+        """
+
+        # Real Star Catalog
+        projection = StarProjection(sim_row, self.catalog)
+        # Random Stars in FOV
+        # projection = RandomProjection(sim_row)
+
+        if len(projection.frame.index) <= 1:
+            return -1
+
+        # update data for number of stars generated
+        sim_row.NUM_STARS = len(projection.frame.index)
+
+        # QUEST
+        # eci_real = projection.frame['ECI_TRUE'].to_numpy()
+        cv_real = projection.frame['CV_TRUE'].to_numpy()
+        cv_est = projection.frame['CV_MEAS'].to_numpy()
+
+        dot_prod = np.array([real.dot(measure) for real, measure in zip(cv_real, cv_est)])
+        dot_prod[np.isclose(dot_prod, 1, 1e-7)] = 1
+        separation = np.mean(3600 * np.rad2deg(np.arccos(dot_prod)))
+
+        return separation
     
     """ 
     SUN ET AL STAR LOCATION -> QUEST FUNCTION

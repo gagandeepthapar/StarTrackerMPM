@@ -3,13 +3,13 @@
 
     "FOCAL_LENGTH_AVERAGE": 3316,
     
-    "F_ARR_EPS_X_STD": 0.1,
-    "F_ARR_EPS_Y_STD": 0.1,
-    "F_ARR_EPS_Z_STD": 0.5,
+    "F_ARR_EPS_X_STD": 1.5,
+    "F_ARR_EPS_Y_STD": 0,
+    "F_ARR_EPS_Z_STD": 0.2,
 
-    "F_ARR_PHI_STD": 0.01,
-    "F_ARR_THETA_STD": 0.01,
-    "F_ARR_PSI_STD": 0.01,
+    "F_ARR_PHI_STD": 0.0,
+    "F_ARR_THETA_STD": 0.025,
+    "F_ARR_PSI_STD": 0.0,
 
     "MAX_MAGNITUDE_AVERAGE": 5,
     "MAX_MAGNITUDE_STD": 0.2,

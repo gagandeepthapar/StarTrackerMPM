@@ -8,14 +8,13 @@ import matplotlib.pyplot as plt
 
 import constants as c
 from simObjects.Simulation import Simulation
-from simObjects.AttitudeEstimation import QUEST, RandomProjection
+# from simObjects.AttitudeEstimation import QUEST, RandomProjection
 from simObjects.Software import Software
 from simObjects.Orbit import Orbit
-from simObjects.Parameter import Parameter
+# from simObjects.Parameter import Parameter
 from simObjects.StarTracker import StarTracker
 
 logger = logging.getLogger(__name__)
-
 class MonteCarlo(Simulation):
 
     def __init__(self, camera:StarTracker, software:Software, orbit:Orbit, num_runs:int)->None:
@@ -31,7 +30,7 @@ class MonteCarlo(Simulation):
         return super().run_sim(params=params, obj_func=obj_func)
 
     def plot_data(self, data:pd.DataFrame, *kwargs) -> None:
-        return super().plot_data(data)
+        return super().plot_data(data, *kwargs)
     
     def __create_data(self)->pd.DataFrame:
 
@@ -55,5 +54,5 @@ class MonteCarlo(Simulation):
         
         self.sim_data['FOCAL_LENGTH'] = self.sim_data['FOCAL_LENGTH'] + df_dtemp
         self.sim_data['D_FOCAL_LENGTH'] = self.sim_data['FOCAL_LENGTH'] - self.camera.f_len.ideal
-        
+
         return self.sim_data

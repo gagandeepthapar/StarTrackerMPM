@@ -10,9 +10,9 @@ import constants as c
 import monte_carlo as mc
 import sensitivity as sense
 
-from simObjects.AttitudeEstimation import QUEST, RandomProjection
+# from simObjects.AttitudeEstimation import QUEST, RandomProjection
 from simObjects.Orbit import Orbit
-from simObjects.Parameter import Parameter
+# from simObjects.Parameter import Parameter
 from simObjects.Simulation import Simulation
 from simObjects.Software import Software
 from simObjects.StarTracker import StarTracker
@@ -56,7 +56,7 @@ def parse_arguments()->argparse.Namespace:
                                      description='Simulates a star tracker on orbit with hardware deviation, various software implementations, and varying environmental effects to analyze attitude determination accuracy and precision.',
                                     epilog='Contact Gagandeep Thapar @ gthapar@calpoly.edu for additional assistance')
 
-    parser.add_argument('-func', '--function', metavar='', type=str, help='Set Objective Function: (Q)uest First Principles, (S)un Et. al Star Location Error, (C)ombine QUEST with Sun Et. al Errors. Default Q.', default='Q')
+    parser.add_argument('-func', '--function', metavar='', type=str, help='Set Objective Function: (Q)uest First Principles or (P)hi Model Analysis. Default QUEST.', default='Q')
 
     parser.add_argument('-log', '--logger', metavar='', type=str, help='Set logging level: (D)ebug, (I)nfo, (W)arning, (E)rror, (C)ritical. Default INFO.', default='INFO')
 
@@ -64,6 +64,7 @@ def parse_arguments()->argparse.Namespace:
     
     parser.add_argument('-sim', '--simulation', metavar='', type=str, help='Determine Sim Type: (M)onteCarlo or (S)ensitivityAnalysis. Default M, Monte Carlo Analysis.', default='M')
     parser.add_argument('-n', '--numberOfRuns', metavar='', type=int, help='Number of Runs (Monte Carlo) or Data Points Generated (Sensitivity Analysis). Default {:,}'.format(DEFAULT_RUNS), default=DEFAULT_RUNS)
+    parser.add_argument('-m', '--maximumRuns', metavar='', type=int, help='Maximum number of Runs (Monte Carlo) or Data Points Generated (Sensitivity Analysis). Default {:,}'.format(DEFAULT_RUNS), default=DEFAULT_RUNS)
     
     parser.add_argument('-cam', '--camera', metavar='', type=str, help='Star Tracker Hardware: (I)deal, (B)asic, (P)oor, or path to JSON. Default Basic', default='B')
     parser.add_argument('-sw', '--software', metavar='', type=str, help='Centroid Software: (I)deal, (B)asic, (A)dvanced, or path to JSON. Default Basic', default='B')
@@ -109,6 +110,9 @@ def setup_star_tracker(args_cam:str)->StarTracker:
 
         case 'P' | 'POOR':
             return StarTracker(cam_json=c.POOR_CAM, cam_name='Poor Camera')
+        
+        case 'S' | 'SUN':
+            return StarTracker(cam_json=c.SUN_CAM, cam_name='Sun Camera')
         
         # case 'B' | 'BAD':
         #     return StarTracker(cam_json=c.BAD_CAM, cam_name='Bad Camera')
@@ -223,14 +227,14 @@ def setup_objective(simulation:Simulation, func_str:str):
         case 'Q':
             obj_func = simulation.quest_objective
 
-        case 'S':
-            obj_func = simulation.sun_etal_star_mismatch
+        case 'P':
+            obj_func = simulation.phi_model
             
-        case 'C':
-            obj_func = simulation.sun_etal_quest
+        # case 'C':
+        #     obj_func = simulation.sun_etal_quest
 
         case _:
-            raise NameError('Improper Input. Either Q/S/C for QUEST, Sun Et. Al Mismatch, Combination of QUEST and Sun Et Al., respectively')
+            raise NameError('Improper Input. Either Q/P for QUEST or Phi Model, respectively')
 
     return obj_func
 
@@ -256,48 +260,68 @@ if __name__ == '__main__':
     RUN SIMULATION
     """
     fin_df = pd.DataFrame()
+    acc_col:str=None
     count = 0
     start = time.perf_counter()
     
     std_ratio = 1
     prev_std = 1
+    
 
     # continuously run new sims until tolerance is met or 1M solutions calculated
-    while std_ratio > 1e-4 and len(fin_df.index) <= 1_000_0:
+    while std_ratio > 1e-3 and len(fin_df.index) <= args.maximumRuns:
+        st = time.perf_counter()
         count += 1
         df = sim.run_sim(params=params, obj_func=obj_func).copy()
         if count == 1:
+            acc_col = sim.output_name
             fin_df = df
         
         else:
             fin_df = pd.concat([fin_df, df], axis=0)
         
-        std_ratio = np.abs((prev_std - fin_df.CALC_ACCURACY.std())/prev_std)
-        prev_std = fin_df.CALC_ACCURACY.std()
+        std_ratio = np.abs((prev_std - np.sqrt(fin_df[acc_col].mean()))/prev_std)
+        prev_std = np.sqrt(fin_df[acc_col].mean())
         
-        print(f'Run:\n\tCount: {count}\n\t\n\tSize: {len(fin_df.index)}\n\tMean: {fin_df.CALC_ACCURACY.mean()}\n\tNew STD: {df.CALC_ACCURACY.std()}\n\tFull STD: {prev_std}\n\tRatio: {std_ratio}')
-        
-
+        logger.info(f'Run:\n'
+                    f'\tCount: {count}\n'
+                    f'\tTime: {time.perf_counter() - st}\n'
+                    f'\t\n\tSize: {len(fin_df.index)}\n'
+                    f'\tMean: {fin_df[acc_col].mean()}\n'
+                    f'\tNew STD: {np.sqrt(df[acc_col].mean())}\n'
+                    f'\tFull STD: {prev_std}\n'
+                    f'\tRatio: {std_ratio}')
 
     delta = time.perf_counter() - start
     
     numFail = args.numberOfRuns*count - len(fin_df.index)
     failRate = numFail/(args.numberOfRuns * count)
     
+    mean = fin_df[acc_col].mean()
+    logger.debug('Skew: {}'.format(fin_df[acc_col].skew()))
+    if fin_df[acc_col].skew() > 0.5:
+        true_std = np.sqrt(mean)
+    else:
+        true_std = fin_df[acc_col].std() / np.sqrt(len(fin_df.index))
+
     logger.critical('{}TOTAL TIME: {} s{}'.format(c.GREEN, delta, c.DEFAULT))
     logger.critical('{}PER RUN TIME: {} ms{}'.format(c.GREEN, delta/args.numberOfRuns * 1000, c.DEFAULT))
-    logger.critical('{}MEAN ACC: {}\"{}'.format(c.GREEN, df.CALC_ACCURACY.mean(), c.DEFAULT))
-    logger.critical('{}STD ACC: {}\"{}'.format(c.GREEN, df.CALC_ACCURACY.std(), c.DEFAULT))
+    logger.critical('{}MEAN ACC: {}\"{}'.format(c.GREEN, mean, c.DEFAULT))
+    logger.critical('{}STD ACC: {}\"{}'.format(c.GREEN, true_std, c.DEFAULT))
     logger.critical('{}FAILURE RATE: {}% ({}/{}){}\n'.format(c.GREEN, failRate*100, numFail, args.numberOfRuns*count, c.DEFAULT))
+    logger.critical('\n{}MEAN DATA:\n{}{}'.format(c.GREEN, fin_df.mean(), c.DEFAULT))
+    
     logger.debug('{}SIM COLS:\n\n{}{}'.format(c.RED, sim.sim_data.columns, c.DEFAULT))
     logger.debug('{}SIM DATA:\n\n{}{}'.format(c.RED, sim.sim_data, c.DEFAULT))
+    
 
+    plt.show()
     """ 
     PLOT SIMULATION RESULTS
     """
     if args.plot:
         # df.CALC_ACCURACY.hist(bins=100)
-        sim.plot_data(fin_df)
+        sim.plot_data(fin_df, true_std)
         # sim.plot
         
         plt.show()

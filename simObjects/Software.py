@@ -24,7 +24,7 @@ class Software:
         # self.identification = self.__set_ident(identification, id_json)
 
         # self.fail_ident = self.__set_ident(identification, id_json, name='FAIL_IDENT_RATE')
-        self.data = self.randomize()
+        # self.data = self.randomize()
         
         self.__param_list = [self.dev_x, self.dev_y]#, self.fail_ident]
         # self.identification, 
@@ -38,11 +38,8 @@ class Software:
     def randomize(self, num:int=1)->pd.DataFrame:
     
         df = pd.DataFrame()
-        df['BASE_DEV_X'] = self.dev_x.modulate(num)
-        df['BASE_DEV_Y'] = self.dev_y.modulate(num)
-        # df['IDENTIFICATION_ACCURACY'] = self.identification.modulate(num)
-        # df['FAIL_IDENT_RATE'] = self.fail_ident.modulate(num)
-        # df['FALSE_IDENT_RATE'] = self.false_ident.modulate(num)
+        df['BASE_DEV_X'] = np.ones(num) * (self.dev_x.stddev)
+        df['BASE_DEV_Y'] = np.ones(num) * (self.dev_y.stddev)
 
         self.data = df
         return df
@@ -56,7 +53,7 @@ class Software:
         self.data = df
         return df
 
-    def __set_centroid(self, param:Parameter, json_path:str)->tuple[Parameter]:
+    def __set_centroid(self, param:Parameter, json_path:str)->tuple[Parameter, Parameter]:
         if param is not None:
             return param
         

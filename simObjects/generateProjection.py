@@ -6,11 +6,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# from AttitudeEstimation import QUEST
-
 import constants as c
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +15,6 @@ def plot_map(starlist:pd.DataFrame, ra:float, dec:float, fov:float):
 
     fig = plt.figure()
     ax = fig.add_subplot()
-
-    # starlist = starlist[starlist['v_magnitude'] >= 5]
 
     ax.scatter(starlist.right_ascension, starlist.declination, s=1, color='black')
     ax.scatter(ra, dec, color='red', marker='x', s=5)
@@ -41,7 +36,7 @@ def calc_fov(eci_vec:np.ndarray, boresight:np.ndarray)->float:
     dot_prod = boresight.dot(eci_vec)
     return np.arccos(dot_prod)
 
-def eci_to_cv_rotation(roll:float, boresight:np.ndarray)->np.ndarray:
+def eci_to_cv_RM(roll:float, boresight:np.ndarray)->np.ndarray:
 
     perp_vec = ra_dec_to_eci(pd.Series({'right_ascension': 0, 'declination': -np.pi/2}))
     normal_vec = np.cross(boresight, perp_vec)
@@ -56,7 +51,7 @@ def eci_to_cv_rotation(roll:float, boresight:np.ndarray)->np.ndarray:
     C_post_roll = c.Rz(roll) @ C_eci_cv
     return C_post_roll
 
-def new_eci_cv(ra:float, dec:float, roll:float)->np.ndarray:
+def eci_to_cv_rotation(ra:float, dec:float, roll:float)->np.ndarray:
 
     C_ra = c.Rz(-ra)
     C_dec = c.Ry(dec - np.pi/2)
@@ -71,7 +66,7 @@ def generate_projection(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:flo
     fstars = fstars.drop(columns=['spectral_type_a', 'spectral_type_b', 'ascension_proper_motion', 'declination_proper_motion'])
     
     # remove dim stars
-    fstars = fstars[fstars['v_magnitude'] <= max_magnitude]
+    # fstars = fstars[fstars['v_magnitude'] <= max_magnitude]
 
     # calc boresight
     boresight = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
@@ -81,7 +76,7 @@ def generate_projection(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:flo
 
     if len(fstars.index) <= 1:
         # Failure to capture stars
-        logger.critical('{}FAILURE!{}'.format(c.RED, c.DEFAULT))
+        # logger.critical('{}FAILURE!{}'.format(c.RED, c.DEFAULT))
         return pd.DataFrame({'ECI_TRUE':[],
                              'CV_TRUE':[]})
 
@@ -94,9 +89,11 @@ def generate_projection(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:flo
     
     # set CV vectors
     C_eci_cv = eci_to_cv_rotation(roll, boresight)
-    C_new = new_eci_cv(ra, dec, roll)
+    # C_new = new_eci_cv(ra, dec, roll)
+
     fstars['CV_TRUE'] = fstars['ECI_TRUE'].apply(lambda x: C_eci_cv @ x)
-    fstars['CV_NEW'] = fstars['ECI_TRUE'].apply(lambda x: C_new @ x)
+    # fstars['CV_NEW'] = fstars['ECI_TRUE'].apply(lambda x: C_new @ x)
+    # fstars['DIFF'] = fstars.CV_TRUE - fstars.CV_NEW
 
     return fstars
 
@@ -163,7 +160,7 @@ if __name__ == '__main__':
     boresight = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
 
     fs = generate_projection(starframe,ra, dec, roll, fov)
-    print(fs)
+    print(fs[['CV_TRUE', 'CV_NEW', 'DIFF']])
     plot_frame(fs, boresight)
 
     plt.show()

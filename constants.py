@@ -10,6 +10,7 @@ curFile = os.path.abspath(os.path.dirname(__file__))
 IDEAL_CAM = os.path.join(curFile, 'utils/', 'cameraIdeal.json')
 BASIC_CAM = os.path.join(curFile, 'utils/', 'cameraBasic.json')
 POOR_CAM = os.path.join(curFile, 'utils/', 'cameraPoor.json')
+SUN_CAM = os.path.join(curFile, 'utils/', 'cameraSun.json')
 
 """ SOFTWARE CONFIGS """
 IDEAL_CENTROID = os.path.join(curFile, 'utils/', 'idealCentroid.json')

@@ -5,152 +5,10 @@ sys.path.append(sys.path[0] + '/..')
 from json import load as jsonload
 
 import numpy as np
-import pandas as pd
-from .Parameter import Parameter, UniformParameter
-from .generateProjection import generate_projection, eci_to_cv_rotation
-import matplotlib.pyplot as plt
-
 import constants as c
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-class Projection:
-
-    def __init__(self, sim_row:pd.Series):
-        
-        self.state = sim_row
-        self.frame:pd.DataFrame = None
-
-        # ROTATIONS DESCRIBE ECI -> CAMERA VECTOR
-        self.quat_real:np.ndarray = None
-        self.C:np.ndarray = None
-
-        return
-    
-    def skew_sym(self, n:np.ndarray)->np.ndarray:
-
-        return np.array([[0, -n[2], n[1]], [n[2], 0, -n[0]], [-n[1], n[0], 0]])
-
-    def quat_to_rotm(self, quat:np.ndarray)->np.ndarray: 
-
-        e = quat[:3]
-        n = quat[3]
-        
-        Ca = (2*n**2 - 1) * np.identity(3)
-        Cb = 2*np.outer(e, e)
-        Cc = -2*n*self.skew_sym(e)
-
-        C = Ca + Cb + Cc
-
-        return C
-    
-    def rotm_to_quat(self, C:np.ndarray)->np.ndarray:
-        
-        q4 = (np.trace(C) + 1) ** 0.5 / 2
-        q1 = (C[1][2] - C[2][1]) / (4 * q4)
-        q2 = (C[2][0] - C[0][2]) / (4 * q4)
-        q3 = (C[0][1] - C[1][0]) / (4 * q4)
-
-        return np.array([q1, q2, q3, q4])
-
-    def PHI_S(self, cv_true:np.ndarray)->np.ndarray:
-
-        phi = np.deg2rad(self.state.F_ARR_PHI)
-        theta = np.deg2rad(self.state.F_ARR_THETA)
-        psi = np.deg2rad(self.state.F_ARR_PSI)
-        C_gamma_pi = c.Rx(phi) @ c.Ry(theta) @ c.Rz(psi)
-        
-        r_F_pi_gamma = np.array([self.state.F_ARR_EPS_X, 
-                            self.state.F_ARR_EPS_Y,
-                            self.state.F_ARR_EPS_Z + self.state.FOCAL_LENGTH])
-        
-        r_F_pi_pi = C_gamma_pi @ r_F_pi_gamma
-        r_S_F_pi = C_gamma_pi @ cv_true
-        lam_star = (-1 * r_F_pi_pi[2]) / (r_S_F_pi[2])
-        P_star = lam_star * r_S_F_pi + r_F_pi_pi
-        P_star[0] += self.state.BASE_DEV_X
-        P_star[1] += self.state.BASE_DEV_Y
-
-        s_hat = np.array([-P_star[0], -P_star[1], self.state.FOCAL_LENGTH])
-
-        return s_hat / np.linalg.norm(s_hat)
-
-class RandomProjection(Projection):
-
-    def __init__(self, sim_row:pd.Series):
-
-        super().__init__(sim_row)
-
-        self.quat_real = self.__set_real_rotation()
-        self.C = self.quat_to_rotm(self.quat_real)
-        self.frame = self.__create_star_frame()
-
-        # INVERSE ROTATIONS TO GET ECI -> CV DESCRIPTION
-        self.quat_real = np.array([*(-1*self.quat_real[:3]), self.quat_real[3]])
-        self.C = self.quat_to_rotm(self.quat_real)
-        # self.C = self.C.T
-        # self.quat_real = self.rotm_to_quat(self.C)
-
-        return
-
-    def __repr__(self)->str:
-        name = 'PROJECTION @ {}'.format(self.quat_real)
-        return name
-    
-    def __create_star_frame(self):
-
-        # create dataframe
-        frame = pd.DataFrame()
-
-        frame['IDX'] = np.array([i for i in range(int(self.state.NUM_STARS_SENSOR))])
-        frame['CV_TRUE'] = frame.apply(lambda v: self.__s_hat_in_fov(), axis=1)
-        frame['ECI_TRUE'] = frame['CV_TRUE'].apply(lambda v: self.C @ v)
-        frame['CV_MEAS'] = frame['CV_TRUE'].apply(self.PHI_S)
-
-        return frame
-
-    def __s_hat_in_fov(self)->np.ndarray:
-        fov = np.arctan2(c.SENSOR_HEIGHT/2,self.state.FOCAL_LENGTH)
-        phi = np.random.uniform(-fov, fov)  
-        theta = np.random.uniform(-np.pi, np.pi)
-        return np.array([np.sin(phi)*np.cos(theta), np.sin(phi)*np.sin(theta), np.cos(phi)])
-
-    def __set_real_rotation(self)->None:
-        
-        # quaternion representation
-        q = np.random.uniform(-1,1,4)
-        q = q/np.linalg.norm(q)
-        
-        return q
-
-class StarProjection(Projection):
-
-    def __init__(self, sim_row:pd.Series, catalog:pd.DataFrame):
-        super().__init__(sim_row)
-
-        fov = 2 * np.arctan2(c.SENSOR_HEIGHT/2, sim_row.FOCAL_LENGTH)
-        self.frame = generate_projection(starlist=catalog,
-                                         ra=self.state.RIGHT_ASCENSION,
-                                         dec=self.state.DECLINATION,
-                                         roll=self.state.ROLL,
-                                         camera_fov=fov,
-                                         max_magnitude=self.state.MAX_MAGNITUDE)
-
-        ra = self.state.RIGHT_ASCENSION
-        dec = self.state.DECLINATION
-
-        boresight = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
-        self.C = eci_to_cv_rotation(self.state.ROLL, boresight)
-        self.quat_real = self.rotm_to_quat(self.C)
-
-        self.__add_measurement_noise()
-
-    def __add_measurement_noise(self)->None:
-        self.frame['CV_MEAS'] = self.frame['CV_TRUE'].apply(self.PHI_S)
-        return
-
 
 class QUEST:
 
@@ -175,7 +33,7 @@ class QUEST:
         q_diff_A = self.__quat_accuracy(self.q_real, est_quat)
         q_diff_B = self.__quat_accuracy(-1*self.q_real, est_quat)
 
-        min_diff = np.mod(min(q_diff_A, q_diff_B), 3600*360)
+        min_diff = min(q_diff_A, q_diff_B)
 
         if min_diff > 3600:
             # print(self.q_real, est_quat, min_diff)
@@ -199,7 +57,7 @@ class QUEST:
             # return -1
             raise ValueError
 
-        return min(q_diff_A, q_diff_B)
+        return min_diff
 
     def __remove_stars(self, eci_real:np.ndarray, cv_est:np.ndarray)->np.ndarray:
 

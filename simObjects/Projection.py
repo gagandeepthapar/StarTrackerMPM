@@ -16,14 +16,19 @@ logger = logging.getLogger(__name__)
 
 class Projection:
 
-    def __init__(self, sim_row:pd.Series):
+    def __init__(self, sim_row:pd.Series, type:str):
         
         self.state = sim_row
         self.frame:pd.DataFrame = None
+        self.type = type
+        self.temp:float=25
 
+        # self.centroid_model = lambda m: 0.00246601*m**2 + 0.00687582*m + 0.0211441
+        self.centroid_model = lambda m:0.00333124*np.exp(0.406843*m)-0.00153084
         # ROTATIONS DESCRIBE ECI -> CAMERA VECTOR
         self.quat_real:np.ndarray = None
         self.C:np.ndarray = None
+
 
         return
     
@@ -58,16 +63,16 @@ class Projection:
     def PHI_S(self, sim_row:pd.Series)->np.ndarray:
 
         cv_true = sim_row.CV_TRUE
-        # x_f = np.random.normal(7e-6, 3.9e-5)
-        # temp = np.random.uniform(0, 60)
-        # fZ = (self.state.FOCAL_LENGTH * (temp-25)*x_f) + self.state.F_ARR_EPS_Z
-
+        # x_f = np.random.normal(7e-6, 3.9e-6)
+        # fZ = (self.state.FOCAL_LENGTH * (self.temp-25)*x_f) + self.state.F_ARR_EPS_Z
         fZ = self.state.F_ARR_EPS_Z
+        # logger.critical(fZ)
 
 
         phi = np.deg2rad(self.state.F_ARR_PHI)
         theta = np.deg2rad(self.state.F_ARR_THETA)
         psi = np.deg2rad(self.state.F_ARR_PSI)
+        
         C_gamma_pi = c.Rx(phi) @ c.Ry(theta) @ c.Rz(psi)
         
         r_F_pi_gamma = np.array([self.state.F_ARR_EPS_X, 
@@ -78,8 +83,20 @@ class Projection:
         r_S_F_pi = C_gamma_pi @ cv_true
         lam_star = (-r_F_pi_pi[2]) / (r_S_F_pi[2])
         P_star = lam_star * r_S_F_pi + r_F_pi_pi
-        P_star[0] += np.random.normal(0, self.state.BASE_DEV_X)
-        P_star[1] += np.random.normal(0, self.state.BASE_DEV_Y)
+
+        # add centroiding error
+        if np.abs(self.state.BASE_DEV_X) > 0:
+            if self.type == 'MC':
+                cdiff = self.centroid_model(sim_row.v_magnitude)/np.sqrt(2)
+                # cdiff = self.state.BASE_DEF_X
+                # logger.critical(cdiff)
+                P_star[0] += np.random.normal(0, cdiff)
+                P_star[1] += np.random.normal(0, cdiff)
+            
+            else:
+                t = np.random.uniform(0, 2*np.pi)
+                P_star[0] += self.state.BASE_DEV_X * np.cos(t)
+                P_star[1] += self.state.BASE_DEV_Y * np.sin(t)
 
         s_hat = np.array([-P_star[0], -P_star[1], self.state.FOCAL_LENGTH])
 
@@ -91,7 +108,7 @@ class Projection:
         
 class NoiseSim:
 
-    def __init__(self, frame:pd.DataFrame, state:pd.Series):
+    def __init__(self, frame:pd.DataFrame, state:pd.Series, temp:float=25):
 
         # INPUTS
         self.frame = frame
@@ -100,20 +117,20 @@ class NoiseSim:
         # STAR TRACKER PROPERTIES
         self.qe = 0.6
         self.t_i = 0.2
-        self.window_size = 7
-        self.sigma = 2
+        self.window_size = 21
+        self.sigma = 5
         self.star_counter = np.array([])
         self.prnu_factor = .01
         self.pA = (3.5e-6)**2   # mm2
-        self.temp = 25 + 273.15
+        self.temp = temp+ 273.15
         # self.temp = np.random.uniform(0, 60)+273.15
-        self.darknoise_dn = 0.2
+        self.darknoise_dn = 0.1# * 1.5
         self.max_e = 10_000
         self.eg0 = 1.1557
         self.alpha = 7.021e-4
         self.beta = 1108
         self.asn = 5e-6
-        self.reset_factor = 0.8
+        self.reset_factor = 0.2
         self.v_ref = 3.3
         self.bits = 12
 
@@ -157,11 +174,12 @@ class NoiseSim:
 
         # FPN (Dark)
         fpn = self.__get_prnu_signal()
-        self.dark_noise = np.multiply(self.dark_noise, 1 + (self.darknoise_dn * fpn))
+        self.dark_noise = np.multiply(self.dark_noise, 1 + (self.darknoise_dn * 1*fpn))
         # logger.critical('DARK: {} +/- {}'.format(self.dark_noise.mean(), self.dark_noise.std()))
         
         # Combine noise and signal; check bounds
-        self.signal = self.img_data + self.dark_noise*10
+        # self.img_data = self.img_data*5
+        self.signal = (self.img_data + self.dark_noise)
         self.signal[self.signal < 0] = 0
         self.signal[self.signal > self.max_e] = self.max_e
 
@@ -197,35 +215,41 @@ class NoiseSim:
         self.signal_dn[self.signal_dn <= thresh] = 0
         self.frame = self.frame[self.frame.STAR_POWER > thresh]
 
-        # self.__plot_analysis(len(frame.index))
-        # raise ValueError
+        self.__plot_analysis(len(frame.index))
+        raise ValueError
         return
     
     def __plot_analysis(self, tot_star_count:int):
+        plt.rcParams['text.usetex'] = True
         fig = plt.figure()
-        ax = fig.add_subplot()
+        ax = fig.add_subplot(2,1,1)
         raw = ax.imshow(self.pre_filter)
-        ax.set_title('Pre-Threshold')
-        fig.colorbar(raw, ax=ax)
-
-        fig = plt.figure()
-        ax = fig.add_subplot()
+        ax.set_title('{} / {} Stars Visible'.format(len(self.frame.index), tot_star_count), fontsize=15)
+        cbar = fig.colorbar(raw, ax=ax)
+        
+        cbar.ax.get_yaxis().labelpad = 15
+        cbar.ax.set_ylabel('Brightness Intensity', rotation=90, fontsize=12)
+        # fig = plt.figure()
+        ax = fig.add_subplot(2,1,2)
         new = ax.imshow(self.signal_dn)
-        ax.set_title('Post Threshold: {} / {} Visible Stars'.format(len(self.frame.index), tot_star_count))
-        fig.colorbar(new, ax=ax)
+        
+        cbar = fig.colorbar(new, ax=ax)
+
+        cbar.ax.get_yaxis().labelpad = 15
+        cbar.ax.set_ylabel('Brightness Intensity', rotation=90, fontsize=12)
 
         plt.show()
         return
 
     def __calc_photons(self, mag):
-        return 19_100/self.qe * 1/(2.5**mag) * self.t_i * np.pi * (25.6/(2*0.95))**2
+        return 19_100/self.qe * 1/(2.5**mag) * self.t_i * np.pi * (12.25/(2*1.4))**2
 
     def __add_star_to_image(self, x:int, y:int, electron_count:float=500_000)->None:
 
         roi = np.zeros((self.window_size, self.window_size))
         roi[self.window_size//2][self.window_size//2] = electron_count
         roi = gaussian_filter(roi, sigma=self.sigma)
-
+        roi= 5*roi
         for i, ic in enumerate(range(x - self.window_size//2 -1, x + self.window_size//2, 1)):
             for j, jc in enumerate(range(y-self.window_size//2 -1, y+self.window_size//2, 1)):
                 
@@ -294,8 +318,8 @@ class RandomProjection(Projection):
 
 class StarProjection(Projection):
 
-    def __init__(self, sim_row:pd.Series, catalog:pd.DataFrame):
-        super().__init__(sim_row)
+    def __init__(self, sim_row:pd.Series, catalog:pd.DataFrame, type:str):
+        super().__init__(sim_row, type)
 
         fov = 2 * np.arctan2(c.SENSOR_HEIGHT/2, sim_row.FOCAL_LENGTH)
         self.frame = generate_projection(starlist=catalog,
@@ -305,17 +329,35 @@ class StarProjection(Projection):
                                          camera_fov=fov,
                                          max_magnitude=self.state.MAX_MAGNITUDE)
 
-        ra = self.state.RIGHT_ASCENSION
-        dec = self.state.DECLINATION
+        # logger.critical(f'{c.GREEN}NUM STARS: {len(self.frame.index)}{c.DEFAULT}')
+        # self.temp = np.random.uniform(0, 60)
+        if len(self.frame.index) > 1:
+            
+            # if self.state.MAX_MAGNITUDE < 10:
+                # logger.critical('yo')
+            self.frame = self.frame[self.frame.v_magnitude <= self.state.MAX_MAGNITUDE]
+                
 
-        boresight = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
-        self.C = eci_to_cv_rotation(self.state.ROLL, boresight)
-        self.quat_real = self.rotm_to_quat(self.C)
+            self.C = eci_to_cv_rotation(self.state.RIGHT_ASCENSION, self.state.DECLINATION,self.state.ROLL)
+            self.quat_real = self.rotm_to_quat(self.C)
 
-        self.frame = self.frame.apply(self.PHI_S, axis=1)
+            self.frame = self.frame.apply(self.PHI_S, axis=1)
+            # self.frame['TEMP'] = self.temp*np.ones(self.frame.R)
+        
 
-        if self.state.MAX_MAGNITUDE < 10:
-            self.noise_model = NoiseSim(self.frame, self.state)
-            self.frame = self.noise_model.frame
+            # if self.state.MAX_MAGNITUDE < 10:
+            # self.noise_model = NoiseSim(self.frame, self.state, self.temp)
+            #     # self.pre_maxmag = self.frame.v_magnitude.max()
+            #     # self.pre_numstar = len(self.frame.index)
+            #     # logger.critical(len(self.noise_model.frame.index))
+
+                
+            # #     # logger.critical(self.noise_model.frame.v_magnitude.mean())
+            # #     # logger.critical(self.noise_model.frame.v_magnitude.std())
+            # #     # logger.critical(self.frame.v_magnitude.max())
+            # #     # logger.critical(self.noise_model.frame.v_magnitude.max())
+            # #     # logger.critical(self.noise_model.)
+            # #     # raise ValueError
+            # self.frame = self.noise_model.frame
 
 

@@ -1,5 +1,5 @@
 import sys
-
+import os
 import numpy as np
 import pandas as pd
 
@@ -20,7 +20,8 @@ class Software:
                        ctr_json:str=c.IDEAL_CENTROID,
                        id_json:str=c.IDEAL_IDENT):
 
-        self.dev_x, self.dev_y = self. __set_centroid(centroiding, ctr_json)
+        json = os.path.join(c.curFile, ctr_json)
+        self.dev_x, self.dev_y = self. __set_centroid(centroiding, json)
         # self.identification = self.__set_ident(identification, id_json)
 
         # self.fail_ident = self.__set_ident(identification, id_json, name='FAIL_IDENT_RATE')
@@ -60,10 +61,10 @@ class Software:
         with open(json_path) as fp_open:
             ctr_data = jsonload(fp_open)
 
-        ideal = ctr_data['IDEAL']
-        mean = ctr_data['MEAN']
+        # ideal = ctr_data['IDEAL']
+        # mean = ctr_data['MEAN']
         stddev = ctr_data['STDDEV']
-        units = ctr_data['UNITS']
+        # units = ctr_data['UNITS']
 
         # devX = Parameter(ideal, stddev, mean, name='BASE_DEV_X', units=units)
         # devY = Parameter(ideal, stddev, mean, name='BASE_DEV_Y', units=units)

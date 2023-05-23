@@ -41,47 +41,55 @@ class Simulation:
         self.catalog:pd.DataFrame = pd.read_pickle(c.BSC5PKL)
 
         self.obj_func_out = {
-                                self.sun_etal_star_mismatch:'STAR_ANGLE_MISMATCH',
+                                # self.sun_etal_star_mismatch:'STAR_ANGLE_MISMATCH',
                                 self.quest_objective:'QUATERNION_ERROR_[arcsec]',
-                                self.phi_model:'ANGULAR_SEPARATION_[arcsec]'
+                                self.phi_model:'ANGULAR_SEPARATION_[arcsec]',
+                                self.star_mag:'MAXIMUM MAGNITUDE VISIBLE'
                             }
 
         self.output_name:str=None
+
+        self.half_normal_std = lambda x: x / np.sqrt(1 - 2/np.pi)
+        self.half_normal_mean = lambda x: self.half_normal_std(x) * np.sqrt(2/np.pi)
+        self.type:str=None
         return
 
     def __repr__(self)->str:
         return '{} Data Points'.format(self.num_runs)
 
-    def run_sim(self, params, obj_func:callable)->pd.DataFrame: 
+    def run_sim(self, params, obj_func:callable, **kwargs)->pd.DataFrame: 
 
+        sim_data = kwargs.get('trueData', self.sim_data)
+        
         if obj_func is None or obj_func not in list(self.obj_func_out.keys()):
-            obj_func = self.sun_etal_star_mismatch
+            obj_func = self.quest_objective
+
+        # obj_func = 
 
         self.output_name = self.obj_func_out.get(obj_func, 'CALC_ACCURACY')
-         
+        preapply = time.perf_counter()
 
-        logger.debug('{}{} Objective Function{}'.format(c.RED,self.output_name, c.DEFAULT))
-
-        match obj_func:    
-            case self.sun_etal_star_mismatch:
-                
-                self.sim_data[self.output_name] = self.sim_data.apply(obj_func, axis=1)
-                mean = self.sim_data[self.output_name].mean()
-                std = self.sim_data[self.output_name].std()
-                rng_min = mean - 3*std
-                rng_max = mean + 3*std
-                
-                self.sim_data['CALC_ACCURACY'] = np.max([np.abs(rng_max/2), np.abs(rng_min/2)])
-
-            case _:
-                self.sim_data[self.output_name] = self.sim_data.apply(obj_func, axis=1)
-
-        # logger.critical(len(self.sim_data.index))
-        # logger.critical(self.sim_data[self.output_name])
-        self.sim_data = self.sim_data[self.sim_data[self.output_name] >= 0]
+        sim_data[self.output_name] = sim_data.apply(obj_func, axis=1)
+    
         
+        if self.output_name == self.obj_func_out[self.star_mag]:
+            logger.info('\tMean: {}'.format(sim_data[self.output_name].mean()))
+        
+        else:
+            sim_data = sim_data[sim_data[self.output_name] >= 0]
+        # raise ValueError
+        # logger.critical(sim_data[self.output_name].mode())
+        
+        datastd = sim_data[self.output_name].std() / (np.sqrt(1 - 2/np.pi))
+        # datamean = sim_data[self.output_name].mean()
+        sim_data = sim_data[sim_data[self.output_name] <= 6*datastd]
+        logger.debug('\n{}'.format(sim_data.head().to_string()))
+        # raise ValueError
+        # logger.critical(f'{c.RED}POST: {len(self.sim_data.index)}{c.DEFAULT}')
         # logger.critical(len(self.sim_data.index))
-        return self.sim_data
+        # logger.debug(f'{c.RED}THRESHOLD: {5*datastd}{c.DEFAULT}')
+        # logger.debug(f'{c.RED}Objective Function Time: {time.perf_counter() - preapply}{c.DEFAULT}')
+        return sim_data
 
     def plot_data(self, data:pd.DataFrame=None, true_std:float=None)->None: # method to be overloaded
         
@@ -89,12 +97,12 @@ class Simulation:
             data = self.sim_data
 
         if true_std is None:
-            true_std = self.sim_data[self.output_name].std()
+            true_std = self.half_normal_std( self.sim_data[self.output_name].std())
             
         fig = plt.figure()
         ax = fig.add_subplot()
 
-        ax.hist(data[self.output_name], bins=int(np.sqrt(len(data.index))))
+        ax.hist(data[self.output_name], bins=int(np.sqrt(len(data.index))), density=True)
         ax.set_ylabel('Number of Runs')
 
         ax.set_xlabel('{}'.format(self.output_name.replace('_', ' ').title()))
@@ -140,38 +148,6 @@ class Simulation:
         return
 
     """ 
-    SUN ET AL STAR LOCATION ERROR FUNCTION
-    """
-
-    def sun_etal_star_mismatch(self, row:pd.Series, star_angle:float=np.random.uniform(-8, 8))->float:
-        """
-        function to calculate accuracy of star tracker from hardware as outlined in "Optical System Error Analysis and Calibration Method of High-Accuracy Star Trackers", Sun et al (2013)
-        
-        Args:
-            row (pd.Series): row item from data set containing information about star tracker hardware and centroiding ability
-            star_angle (float, optional): random angle star makes wrt the focal array. Defaults to np.random.uniform(-8, 8).
-
-        Returns:
-            float: accuracy of the star tracker described by that row
-        """
-
-        delta_s = np.linalg.norm([row.BASE_DEV_X, row.BASE_DEV_Y])
-        theta = np.deg2rad(row.FOCAL_ARRAY_INCLINATION)
-        star_angle = np.deg2rad(star_angle)
-
-        foc_len = row.FOCAL_LENGTH - row.D_FOCAL_LENGTH
-
-        fa_num = row.FOCAL_LENGTH + row.PRINCIPAL_POINT_ACCURACY * np.tan(theta)
-        fa_dec = np.cos(theta + star_angle)
-
-        fb = row.PRINCIPAL_POINT_ACCURACY / np.cos(theta)
-
-        eA_A = np.arctan((fa_num/fa_dec * np.sin(star_angle) + fb + delta_s + row.DISTORTION)/foc_len)
-        eA_B = np.arctan(row.PRINCIPAL_POINT_ACCURACY/(foc_len * np.cos(theta)))
-
-        return 3600 * np.rad2deg(eA_A - eA_B - star_angle)
-
-    """ 
     FIRST PRINCIPLES HARDWARE DEVIATION + QUEST FUNCTION
     """
 
@@ -189,7 +165,10 @@ class Simulation:
         """
 
         # Real Star Catalog
-        projection = StarProjection(sim_row, self.catalog)
+        # logger.critical(sim_row)
+        create_proj = time.perf_counter()
+        projection = StarProjection(sim_row, self.catalog, self.type)
+        post_proj = time.perf_counter()
         # visible = NoiseModel(projection.frame, sim_row)
 
         # Random Stars in FOV
@@ -205,7 +184,13 @@ class Simulation:
         eci_real = projection.frame['ECI_TRUE'].to_numpy()
         cv_real = projection.frame['CV_TRUE'].to_numpy()
         cv_est = projection.frame['CV_MEAS'].to_numpy()
+
+        pre_quest = time.perf_counter()
         quest = QUEST(eci_real, cv_real, cv_est, q=projection.quat_real)
+        post_quest = time.perf_counter()
+
+        # logger.debug(f'{c.RED}Projection: {post_proj - create_proj}{c.DEFAULT}')
+        # logger.debug(f'{c.RED}QUEST: {post_quest - pre_quest}{c.DEFAULT}')
 
         try:
             q_diff = quest.calc_acc()    
@@ -240,6 +225,7 @@ class Simulation:
         # projection = RandomProjection(sim_row)
 
         if len(projection.frame.index) <= 1:
+            logger.critical(f'{c.RED}MAGNITUDE FAILURE{c.DEFAULT}')
             return -1
 
         # update data for number of stars generated
@@ -255,103 +241,16 @@ class Simulation:
         separation = np.mean(3600 * np.rad2deg(np.arccos(dot_prod)))
 
         return separation
-    
-    """ 
-    SUN ET AL STAR LOCATION -> QUEST FUNCTION
-    """
 
-    def __sun_etal_px_diff(self, row:pd.Series, star_angle:float=np.random.uniform(-8,8))->float:
+    def star_mag(self, sim_row:pd.Series)->float:
 
-        theta = np.deg2rad(row.FOCAL_ARRAY_INCLINATION)
-        star_angle = np.deg2rad(star_angle)
-        delta_s = np.linalg.norm([row.BASE_DEV_X, row.BASE_DEV_Y])
-
-        fa_num = row.FOCAL_LENGTH + row.D_FOCAL_LENGTH + row.PRINCIPAL_POINT_ACCURACY*np.tan(theta)
-        fa_den = np.cos(theta + star_angle)
-
-        delta_star = fa_num/fa_den * np.sin(star_angle) + delta_s + row.DISTORTION - row.FOCAL_LENGTH*np.tan(star_angle) 
-
-        return delta_star
-
-    def __set_real_rotation(self)->None:
+        projection = StarProjection(sim_row, self.catalog, self.type)
         
-        # quaternion representation
-        q = np.random.uniform(-1,1,4)
-        q = q/np.linalg.norm(q)
+        # sim_row.NUM_STARS_PRE = projection.pre_numstar
+        # sim_row.NUM_STARS_VIS = len(projection.frame.index)
         
-        # rotation matrix
-        
-        skew = lambda n: np.array([[0, -n[2], n[1]], [n[2], 0, -n[0]], [-n[1], n[0], 0]])
+        # sim_row.MAX_MAG_PRE = projection.pre_maxmag
+        # sim_row.MAX_MAG_VIS = projection.frame.v_magnitude.max()
 
-        e = -1*q[:3]
-        n = q[3]
-        
-        Ca = (2*n**2 - 1) * np.identity(3)
-        Cb = 2*np.outer(e, e)
-        Cc = -2*n*skew(e)
+        return projection.frame.v_magnitude.max()
 
-        C = Ca + Cb + Cc
-
-        return q, C
-
-    def __px_to_cv(self, row:pd.Series, f_len:float)->np.ndarray:
-        x = row[0]
-        y = row[1]
-        z = f_len
-
-        cvx = x - c.SENSOR_WIDTH/2
-        cvy = y - c.SENSOR_HEIGHT/2
-        cvz = z
-
-        v = np.array([cvx, cvy, cvz])
-        return v/np.linalg.norm(v)
-
-    def __create_starlist(self,num_stars:int, mis_match:float, rot_matr:np.ndarray, f_len:float, df_len:float)->pd.DataFrame:
-    
-        frame = pd.DataFrame()
-        
-        # set perceived information
-        frame['IMAGE_X'] = np.random.uniform(0, c.SENSOR_WIDTH, int(num_stars))
-        frame['IMAGE_Y'] = np.random.uniform(0, c.SENSOR_HEIGHT, int(num_stars))
-
-        frame['IMAGE_DEV_X'] = frame['IMAGE_X'] + np.random.uniform(-1*np.abs(mis_match), np.abs(mis_match), len(frame.index))
-        frame['IMAGE_DEV_Y'] = frame['IMAGE_Y'] + np.random.uniform(-1*np.abs(mis_match), np.abs(mis_match), len(frame.index))
-
-        # create camera vectors
-        frame['CV_EST'] = frame[['IMAGE_DEV_X', 'IMAGE_DEV_Y']].apply(self.__px_to_cv, axis=1, args=(f_len, ))
-
-        # set real information
-        frame['CV_REAL'] = frame[['IMAGE_X', 'IMAGE_Y']].apply(self.__px_to_cv, axis=1, args=(f_len+df_len, ))
-
-        rot = lambda x:  rot_matr @ x
-        frame['ECI_REAL'] = frame['CV_REAL'].apply(rot)
-
-        return frame
-    
-    def sun_etal_quest(self,row:pd.Series)->float:
-        """
-        combines star mismatch due to hardware from sunetal with QUEST quaternion solver
-
-        Args:
-            row (pd.Series): row item from dataset containing star tracker information
-            star_angle (float, optional): random angle star makes wrt the focal array. Defaults to np.random.uniform(-8, 8).
-        
-        Returns:
-            float: accuracy of system
-        """
-
-        q, C = self.__set_real_rotation()
-        mismatch = self.__sun_etal_px_diff(row)
-
-        flen = row.FOCAL_LENGTH - row.D_FOCAL_LENGTH
-
-        star_list = self.__create_starlist(row.NUM_STARS_SENSOR, mismatch, C, flen, row.D_FOCAL_LENGTH)
-        
-        eci_real = star_list['ECI_REAL'].to_numpy()
-        cv_real = star_list['CV_REAL'].to_numpy()
-        cv_est = star_list['CV_EST'].to_numpy()
-        
-        quest = QUEST(eci_real, cv_real, cv_est, row.IDENTIFICATION_ACCURACY,q)
-        q_diff = quest.calc_acc() 
-
-        return q_diff

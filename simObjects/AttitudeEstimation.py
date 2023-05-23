@@ -17,7 +17,7 @@ class QUEST:
         self.eci_real = eci_real
         self.cv_real = cv_real
         self.cv_est = cv_est
-        self.q_real = q
+        self.q_real = q / np.linalg.norm(q)
 
         return
 
@@ -36,8 +36,9 @@ class QUEST:
         min_diff = min(q_diff_A, q_diff_B)
 
         if min_diff > 3600:
+            logger.critical(f'{c.RED}QUEST FAILURE{c.DEFAULT}')
             # print(self.q_real, est_quat, min_diff)
-            print('{}THEORETICAL REAL:\n\t{}\nCALC REAL:\n\t{}\nCALC EST:\n\t{}\nMIN DIFF:\n\t{}{}'.format(c.GREEN, self.q_real, real_quat, est_quat, min_diff, c.DEFAULT))
+            # print('{}THEORETICAL REAL:\n\t{}\nCALC REAL:\n\t{}\nCALC EST:\n\t{}\nMIN DIFF:\n\t{}{}'.format(c.GREEN, self.q_real, real_quat, est_quat, min_diff, c.DEFAULT))
 
             # fig = plt.figure()
             # ax = fig.add_subplot(projection='3d')
@@ -105,7 +106,7 @@ class QUEST:
         quatN = factor * gamma
         
         quat = np.array([*quatE, quatN])
-        return quat
+        # return quat
         return quat/np.linalg.norm(quat)
 
     def __calc_B(self, eci:np.ndarray, cv:np.ndarray, weights:np.ndarray)->np.ndarray:

@@ -352,7 +352,7 @@ class TempData:
     Q SOLAR
     """
     def __solar_position(self, julianDate:float)->np.ndarray:
-        """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al.
+        """Adapted from "Orbital Mechanics for Engineering Students", Curtis et al
 
         Calculate position of the Sun relative to Earth based on julian date
 

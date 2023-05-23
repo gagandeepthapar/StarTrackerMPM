@@ -1,8 +1,9 @@
 import argparse
 import logging
 import time
-
+import os
 import numpy as np
+from datetime import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -17,7 +18,9 @@ from simObjects.Simulation import Simulation
 from simObjects.Software import Software
 from simObjects.StarTracker import StarTracker
 
-DEFAULT_RUNS = 1_000
+DEFAULT_RUNS = 100
+Z_SCORE = 1.96
+ACC = 0.01
 logger = logging.getLogger('driver')
 
 def set_logging_level(argument:str)->None:
@@ -63,11 +66,12 @@ def parse_arguments()->argparse.Namespace:
     # parser.add_argument('-T', '--threads', metavar='', type=int, nargs=1, help='Number of threads to split task. Default 1.', default=1)
     
     parser.add_argument('-sim', '--simulation', metavar='', type=str, help='Determine Sim Type: (M)onteCarlo or (S)ensitivityAnalysis. Default M, Monte Carlo Analysis.', default='M')
-    parser.add_argument('-n', '--numberOfRuns', metavar='', type=int, help='Number of Runs (Monte Carlo) or Data Points Generated (Sensitivity Analysis). Default {:,}'.format(DEFAULT_RUNS), default=DEFAULT_RUNS)
-    parser.add_argument('-m', '--maximumRuns', metavar='', type=int, help='Maximum number of Runs (Monte Carlo) or Data Points Generated (Sensitivity Analysis). Default {:,}'.format(DEFAULT_RUNS), default=DEFAULT_RUNS)
+    parser.add_argument('-n', '--numberOfRuns', metavar='', type=int, help='Maximum number of runs. Default 95% Confidence Interval', default=-1)
     
     parser.add_argument('-cam', '--camera', metavar='', type=str, help='Star Tracker Hardware: (I)deal, (B)asic, (P)oor, or path to JSON. Default Basic', default='B')
     parser.add_argument('-sw', '--software', metavar='', type=str, help='Centroid Software: (I)deal, (B)asic, (A)dvanced, or path to JSON. Default Basic', default='B')
+
+    parser.add_argument('-b', '--batchRuns', metavar='', type=int, help='Number of runs per batch. Default {}.'.format(DEFAULT_RUNS), default=DEFAULT_RUNS)
 
     parser.add_argument('-par', '--parameters', metavar='', type=str, nargs='*',
                         help='Set parameters to analyze for Sensitivity Plot:\n \
@@ -79,6 +83,7 @@ def parse_arguments()->argparse.Namespace:
                             (T)emperature. Default Focal Length.', default='F')
 
     parser.add_argument('-p', '--plot', help='Plot Parameter/Input Data', action='store_true')
+    parser.add_argument('-name', help='Name file', default=None)
 
     args = parser.parse_args()
     
@@ -103,7 +108,7 @@ def setup_star_tracker(args_cam:str)->StarTracker:
     match args_cam_upper:
 
         case 'I' | 'IDEAL':
-            return StarTracker(cam_json=c.IDEAL_CAM, cam_name="Ideal Camera")
+            return StarTracker(cam_json=c.IDEAL_CAM, cam_name="CENTROID")
         
         case 'B' | 'BASIC':
             return StarTracker(cam_json=c.BASIC_CAM, cam_name='Basic Camera')
@@ -118,7 +123,10 @@ def setup_star_tracker(args_cam:str)->StarTracker:
         #     return StarTracker(cam_json=c.BAD_CAM, cam_name='Bad Camera')
 
         case _:
-            return StarTracker(cam_json=args_cam)
+            # print(args_cam_upper)
+            st = StarTracker(cam_json=args_cam)
+            # print(st.cam_name)
+            return st
 
 def setup_software(args_sw:str)->Software:
     """
@@ -145,6 +153,7 @@ def setup_software(args_sw:str)->Software:
             sw = Software(ctr_json=c.LEAST_SQUARES_CENTROID, id_json=c.TYP_IDENT)
         
         case _:
+            
             sw = Software(ctr_json=args_sw)
 
     return sw
@@ -169,7 +178,8 @@ def setup_sim_class(sim_type:str, run_count:int, * , cam:StarTracker, software:S
             return  mc.MonteCarlo(cam, software, orbit, run_count)
 
         case 'S' | 'Sensitivity Analysis':
-            return sense.Sensitivity(mod_params, cam, software, orbit, run_count)
+            # return sense.(mod_params, cam, software, orbit, DEFAULT_RUNS)
+            return sense.Sense(cam, software, orbit, run_count)
 
     return
 
@@ -208,6 +218,9 @@ def setup_params(sim_params:list[str])->list[str]:
         
             case 'T':
                 named_params.append('TEMPERATURE')
+            
+            case _:
+                named_params.append(param)
 
     return named_params
 
@@ -230,11 +243,13 @@ def setup_objective(simulation:Simulation, func_str:str):
         case 'P':
             obj_func = simulation.phi_model
             
+        case 'M':
+            obj_func = simulation.star_mag
         # case 'C':
         #     obj_func = simulation.sun_etal_quest
 
         case _:
-            raise NameError('Improper Input. Either Q/P for QUEST or Phi Model, respectively')
+            raise NameError('Improper Input. Either Q/P/M for QUEST, Phi Model, or Magnitude, respectively')
 
     return obj_func
 
@@ -247,75 +262,82 @@ if __name__ == '__main__':
     camera = setup_star_tracker(args.camera)
     sw = setup_software(args.software)
     params = setup_params(args.parameters)
-    sim = setup_sim_class(args.simulation, args.numberOfRuns, cam=camera, software=sw, orbit=Orbit(), mod_params=params)
+    sim = setup_sim_class(args.simulation, args.batchRuns, cam=camera, software=sw, orbit=Orbit(), mod_params=params)
     
     obj_func = setup_objective(sim, args.function)
 
-    logger.info('Camera:\n{}'.format(sim.camera))
-    logger.info('Orbit:\n{}'.format(sim.orbit))
-    logger.info('Software:\n{}'.format(sim.software))
-    logger.info('Runs: {}'.format(sim.num_runs))
+    # logger.info('Camera:\n{}'.format(sim.camera))
+    # logger.info('Orbit:\n{}'.format(sim.orbit))
+    # logger.info('Software:\n{}'.format(sim.software))
+    # logger.info('Runs: {}'.format(sim.num_runs))
 
     """ 
     RUN SIMULATION
     """
     fin_df = pd.DataFrame()
-    acc_col:str=None
+    # acc_col:str=None
     count = 0
     start = time.perf_counter()
     
-    std_ratio = 1
-    prev_std = 1
-    
+    sim.run_sim(params=params, obj_func=obj_func, maxRuns=args.numberOfRuns)
+    fin_df = sim.sim_data
+    count = sim.count
+    acc_col = sim.output_name
 
-    # continuously run new sims until tolerance is met or 1M solutions calculated
-    while std_ratio > 1e-3 and len(fin_df.index) <= args.maximumRuns:
-        st = time.perf_counter()
-        count += 1
-        df = sim.run_sim(params=params, obj_func=obj_func).copy()
-        if count == 1:
-            acc_col = sim.output_name
-            fin_df = df
-        
-        else:
-            fin_df = pd.concat([fin_df, df], axis=0)
-        
-        std_ratio = np.abs((prev_std - np.sqrt(fin_df[acc_col].mean()))/prev_std)
-        prev_std = np.sqrt(fin_df[acc_col].mean())
-        
-        logger.info(f'Run:\n'
-                    f'\tCount: {count}\n'
-                    f'\tTime: {time.perf_counter() - st}\n'
-                    f'\t\n\tSize: {len(fin_df.index)}\n'
-                    f'\tMean: {fin_df[acc_col].mean()}\n'
-                    f'\tNew STD: {np.sqrt(df[acc_col].mean())}\n'
-                    f'\tFull STD: {prev_std}\n'
-                    f'\tRatio: {std_ratio}')
 
+    # std_ratio = 1
+    # prev_std = 1
+    # half_normal_std = lambda x: x / np.sqrt(1 - 2/np.pi)
+    # half_normal_mean = lambda x: half_normal_std(x) * np.sqrt(2/np.pi)
+
+    # while std_ratio > 1e-4 or len(fin_df.index) < 2_000:
+    #     st = time.perf_counter()
+    #     count += 1
+    #     df = sim.run_sim(params=params, obj_func=obj_func).copy()
+    #     if count == 1:
+    #         acc_col = sim.output_name
+    #         fin_df = df
+        
+    #     else:
+    #         fin_df = pd.concat([fin_df, df], axis=0)
+        
+    #     std_ratio = np.abs((prev_std - half_normal_std(fin_df[acc_col]).std())/prev_std)
+    #     prev_std = half_normal_std(fin_df[acc_col].std())
+        
+    #     logger.info(f'Run:\n'
+    #                 f'\tCount: {count}\n'
+    #                 f'\tTime: {time.perf_counter() - st}\n'
+    #                 f'\t\n\tSize: {len(fin_df.index)}\n'
+    #                 # f'\tMean: {half_normal_mean(fin_df[acc_col].std())}\n'
+    #                 f'\tFull STD: {prev_std}\n'
+    #                 f'\tRatio: {std_ratio}')
+        
+    #     if args.numberOfRuns > 0 and len(fin_df.index) >= args.numberOfRuns:
+    #         logger.critical(f'{c.RED}MAXIMUM RUNS REACHED{c.DEFAULT}')
+    #         break
+        
     delta = time.perf_counter() - start
     
-    numFail = args.numberOfRuns*count - len(fin_df.index)
-    failRate = numFail/(args.numberOfRuns * count)
-    
-    mean = fin_df[acc_col].mean()
-    logger.debug('Skew: {}'.format(fin_df[acc_col].skew()))
-    if fin_df[acc_col].skew() > 0.5:
-        true_std = np.sqrt(mean)
-    else:
-        true_std = fin_df[acc_col].std() / np.sqrt(len(fin_df.index))
+    numFail = DEFAULT_RUNS*count - len(fin_df.index)
+    failRate = numFail/(DEFAULT_RUNS * count)
+    mean = sim.half_normal_mean(fin_df[acc_col].std())
+    true_std = sim.half_normal_std(fin_df[acc_col].std())
 
     logger.critical('{}TOTAL TIME: {} s{}'.format(c.GREEN, delta, c.DEFAULT))
-    logger.critical('{}PER RUN TIME: {} ms{}'.format(c.GREEN, delta/args.numberOfRuns * 1000, c.DEFAULT))
-    logger.critical('{}MEAN ACC: {}\"{}'.format(c.GREEN, mean, c.DEFAULT))
+    logger.critical('{}PER RUN TIME: {} ms{}'.format(c.GREEN, delta/(count*DEFAULT_RUNS) , c.DEFAULT))
+    # logger.critical('{}MEAN ACC: {}\"{}'.format(c.GREEN, mean, c.DEFAULT))
     logger.critical('{}STD ACC: {}\"{}'.format(c.GREEN, true_std, c.DEFAULT))
-    logger.critical('{}FAILURE RATE: {}% ({}/{}){}\n'.format(c.GREEN, failRate*100, numFail, args.numberOfRuns*count, c.DEFAULT))
-    logger.critical('\n{}MEAN DATA:\n{}{}'.format(c.GREEN, fin_df.mean(), c.DEFAULT))
+    logger.critical('{}FAILURE RATE: {}% ({}/{}){}\n'.format(c.GREEN, failRate*100, numFail, DEFAULT_RUNS*count, c.DEFAULT))
+    # logger.critical('\n{}MEAN DATA:\n{}{}'.format(c.GREEN, fin_df.mean(), c.DEFAULT))
     
     logger.debug('{}SIM COLS:\n\n{}{}'.format(c.RED, sim.sim_data.columns, c.DEFAULT))
-    logger.debug('{}SIM DATA:\n\n{}{}'.format(c.RED, sim.sim_data, c.DEFAULT))
+    logger.debug('{}SIM DATA:\n\n{}{}'.format(c.RED, sim.sim_data.to_string(), c.DEFAULT))
     
-
-    plt.show()
+    # save data
+    if args.name is not None:
+        fp = os.path.join(c.curFile, 'data/')
+        pd.to_pickle(fin_df, fp+args.name+'.pkl')
+    # plt.show()
     """ 
     PLOT SIMULATION RESULTS
     """

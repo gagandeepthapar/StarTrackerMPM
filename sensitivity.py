@@ -3,6 +3,7 @@ import logging
 import time
 
 import numpy as np
+from numpy.matlib import repmat
 import pandas as pd
 import matplotlib.pyplot as plt
 from copy import deepcopy
@@ -12,91 +13,106 @@ from simObjects.Simulation import Simulation
 # from simObjects.AttitudeEstimation import QUEST, RandomProjection
 from simObjects.Orbit import Orbit
 from simObjects.Parameter import Parameter
+from simObjects.Software import Software
 from simObjects.StarTracker import StarTracker
 
+PER_PARAM = 200
+NUM_PARAMS = 50
+NUM_FRAMES = PER_PARAM//2
 logger = logging.getLogger(__name__)
 
-class Sensitivity(Simulation):
+class Sense(Simulation):
 
-    def __init__(self, params:list[Parameter], camera:StarTracker, centroid:Parameter, orbit:Orbit, num_runs:int)->None:
-        self.__mod_params = params
-        super().__init__(camera, centroid, orbit, num_runs)
+    def __init__(self, camera: StarTracker, software: Software, orbit: Orbit, num_runs: int) -> None:
+        num_runs = PER_PARAM * NUM_PARAMS
+        super().__init__(camera=camera, software=software, orbit=orbit, num_runs=num_runs)
+        self.type:str='SENS'
         return
     
-    def __repr__(self)->str:
-        return 'Sensitivity Analysis: {} Data Points'.format(self.num_runs)
-
-    def run_sim(self, params, obj_func:callable) -> pd.DataFrame:
-        self.__create_data(params)
-        return super().run_sim(params, obj_func=obj_func)
-
-    def plot_data(self, params:list[str]) -> None:
-        if len(params) < 2:
-            params.append('FOCAL_LENGTH') 
+    def run_sim(self, params, obj_func: callable, **kwargs) -> pd.DataFrame:
+        # return super().run_sim(params, obj_func)
+        # super().create_data()
+        self.create_data()
         
-        if len(params) < 1:
-            params.append('FOCAL_ARRAY_INCLINATION')    
-            
-
-        self.__plot_surface_data(params[0], params[1])
-        super().plot_data()
-        return 
-    
-    def __plot_surface_data(self, paramA:str, paramB:str)->None:
-
-        row = deepcopy(self.sim_data.iloc[0].squeeze())
-
-        paramA = self.params[paramA]
-        paramB = self.params[paramB]
-
-        param_a_range = np.linspace(paramA.minRange, paramA.maxRange, int(np.sqrt(self.num_runs)))
-        param_b_range = np.linspace(paramB.minRange, paramB.maxRange, int(np.sqrt(self.num_runs)))
-
-        p_a_mesh, p_b_mesh = np.meshgrid(param_a_range, param_b_range)
-        acc = np.zeros(np.shape(p_a_mesh))
-
-        for i in range(len(p_a_mesh)):
-            for j in range(len(p_a_mesh[0])):
-                row[paramA.name] = p_a_mesh[i][j]
-                row[paramB.name] = p_b_mesh[i][j]
+        for param in params:
+            if param in self.sim_data.columns:
+                # logger.critical(param)
+                # logger.critical(self.params[param])
+                upper = self.params[param].stddev * 3
+                paramset = np.linspace(-upper + self.params[param].ideal, upper + self.params[param].ideal, NUM_PARAMS)
                 
-                acc[i][j] = self.sun_etal_star_mismatch(row)
+                if param == 'BASE_DEV_X' or param == 'BASE_DEV_Y':
+                    paramset = np.linspace(0, upper, NUM_PARAMS)
+                
+                if param == 'MAX_MAGNITUDE':
+                    id = self.camera.mag_sensor.ideal
+                    diff = 1 * 3
+                    paramset = np.linspace(id-diff, id+diff, NUM_PARAMS)
+                
+                paramdata = repmat(paramset, PER_PARAM, 1).flatten()
+                self.sim_data[param] = paramdata
+                # logger.critical(self.sim_data[param].min())
 
-        fig = plt.figure()
-        ax = fig.add_subplot(projection='3d')
+        # raise ValueError
+        # return super().run_sim(params=params, obj_func=obj_func)
 
-        ax.plot_surface(p_a_mesh, p_b_mesh, acc, cmap='coolwarm')
+        if 'FOCAL_LENGTH' in params and 'MAX_MAGNITUDE' in params:            
+            self.sim_data['MAX_MAGNITUDE'] = np.random.normal(self.camera.mag_sensor.ideal, 1, len(self.sim_data.index))
 
-        ax.set_xlabel(paramA.name)
-        ax.set_ylabel(paramB.name)
-        ax.set_zlabel('Calculated Accuracy [arcsec]')
+        # logger.critical(self.sim_data[params])
+        # raise ValueError
 
-        ax.set_title('Surface Map of Accuracy')
+        fin_df = pd.DataFrame()
+        count = 0
+        acc_col:str=None
 
-        return
+        for i in range((int(len(self.sim_data.index)/NUM_FRAMES))):
 
-    def __create_data(self, param_names:list[str])->pd.DataFrame:
+            st = time.perf_counter()
+            count += 1
+            df = self.sim_data.iloc[i*NUM_FRAMES:(i+1)*NUM_FRAMES].copy()
+            # logger.critical(df.to_string())
+            df = super().run_sim(params=params, obj_func=obj_func, trueData=df.copy()).copy()
+            if count == 1:
+                acc_col = self.output_name
+                fin_df = df
+            
+            else:
+                fin_df = pd.concat([fin_df, df], axis=0)
+            
+            logger.info(f'Run:\n'
+                        f'\tCount: {count}\n'
+                        f'\tTime: {time.perf_counter() - st}\n'
+                        f'\t\n\tSize: {len(fin_df.index)}\n'
 
-        if type(param_names) is not list:
-            param_names = [param_names]
+                        f'\tSTD: {self.half_normal_std(fin_df[acc_col].std())}\n')
 
-        # idealize parameters from components
-        q_data = pd.DataFrame({'RIGHT_ASCENSION': np.random.uniform(0, 2*np.pi, self.num_runs),
-                        'DECLINATION': np.random.uniform(0, np.pi, self.num_runs),
-                        'ROLL': np.random.uniform(-np.pi, np.pi, self.num_runs)})
+            # if count == 10:
+            #     break
+            
+        self.sim_data = fin_df
+        self.count = count
+        return fin_df
+    
+    def create_data(self) -> pd.DataFrame:
+        
+        fov = np.deg2rad(10)
+
+        # randomize all data from components
+        q_data = pd.DataFrame({'RIGHT_ASCENSION': np.random.uniform(fov, 2*np.pi - fov, self.num_runs),
+                              'DECLINATION': np.random.uniform(-np.pi/2 + fov, np.pi/2 - fov, self.num_runs),
+                              'ROLL': np.random.uniform(-np.pi, np.pi, self.num_runs)})
         f_data = self.camera.ideal(num=self.num_runs)
         c_data = self.software.ideal(num=self.num_runs)
         o_data = self.orbit.ideal(num=self.num_runs)
 
-        self.sim_data = pd.concat([q_data, f_data, c_data,o_data], axis=1)
+        self.sim_data = pd.concat([q_data, f_data, c_data, o_data], axis=1)
+        self.sim_data['MAX_MAGNITUDE'] = 20 + np.zeros(self.num_runs)
+        
+        # update focal_length based on temperature
+        df_dtemp = self.sim_data['FOCAL_LENGTH'] * (self.sim_data['D_TEMP'] * self.sim_data['FOCAL_THERMAL_COEFFICIENT'])
 
-        # modulate all indicated params in argument
-        for param in param_names:
-            self.sim_data[param] = self.params[param].modulate(self.num_runs)
-            
-            if param == 'FOCAL_LENGTH': # update d_focal_length
-                self.sim_data['D_FOCAL_LENGTH'] = self.sim_data['FOCAL_LENGTH'] - self.camera.f_len.ideal
-
-        logger.info('params:\n{}\n{}'.format(self.sim_data.mean(), self.sim_data.std()))
+        self.sim_data['FOCAL_LENGTH'] = self.sim_data['FOCAL_LENGTH'] + df_dtemp
+        self.sim_data['D_FOCAL_LENGTH'] = self.sim_data['FOCAL_LENGTH'] - self.camera.f_len.ideal
 
         return self.sim_data

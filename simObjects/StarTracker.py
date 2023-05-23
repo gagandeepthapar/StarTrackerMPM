@@ -1,4 +1,5 @@
 import sys
+import os
 
 import numpy as np
 import pandas as pd
@@ -135,10 +136,10 @@ class StarTracker:
                        star_count:Parameter=None,
                        sensor:Parameter=None,
                        cam_json:str=c.IDEAL_CAM,
-                       cam_name:str="IDEAL_CAM"):
+                       cam_name:str=None):
 
         # open cam property file
-        self.camJSON = cam_json
+        self.camJSON = os.path.join(c.curFile, cam_json)
         self.cam_name = self.__set_name(cam_name)
 
         self.f_len = self.__set_parameter(focal_length, "FOCAL_LENGTH")

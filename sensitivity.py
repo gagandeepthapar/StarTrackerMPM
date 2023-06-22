@@ -17,7 +17,7 @@ from simObjects.Software import Software
 from simObjects.StarTracker import StarTracker
 
 PER_PARAM = 200
-NUM_PARAMS = 50
+NUM_PARAMS = 100
 NUM_FRAMES = PER_PARAM//2
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,8 @@ class Sense(Simulation):
         # return super().run_sim(params, obj_func)
         # super().create_data()
         self.create_data()
+        # print(params)
+        # raise ValueError
         
         for param in params:
             if param in self.sim_data.columns:
@@ -42,7 +44,7 @@ class Sense(Simulation):
                 paramset = np.linspace(-upper + self.params[param].ideal, upper + self.params[param].ideal, NUM_PARAMS)
                 
                 if param == 'BASE_DEV_X' or param == 'BASE_DEV_Y':
-                    paramset = np.linspace(0, upper, NUM_PARAMS)
+                    paramset = np.linspace(0, -1*upper, NUM_PARAMS)
                 
                 if param == 'MAX_MAGNITUDE':
                     id = self.camera.mag_sensor.ideal

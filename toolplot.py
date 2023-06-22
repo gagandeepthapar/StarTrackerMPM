@@ -7,6 +7,11 @@ import argparse
 from mpl_toolkits.mplot3d.axes3d import Axes3D
 from scipy.stats import halfnorm, norm
 
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import multivariate_normal
+from mpl_toolkits.mplot3d import Axes3D
+
 def parse_args():
 
     parser = argparse.ArgumentParser()
@@ -15,40 +20,11 @@ def parse_args():
     parser.add_argument('-p', action='store_true')
 
     return parser.parse_args()
+#Parameters to set
 
-def mcplot():
-
-    return
 
 if __name__ == '__main__':
 
-
-
-
-    # fig = plt.figure()
-    # ax = fig.add_subplot(projection='3d')
-    # x, y = np.random.rand(2, 100) * 4
-    # print(x)
-    # hist, xedges, yedges = np.histogram2d(x, y, bins=4, range=[[0, 4], [0, 4]])
-
-    # # Construct arrays for the anchor positions of the 16 bars.
-    # xpos, ypos = np.meshgrid(xedges[:-1] + 0.25, yedges[:-1] + 0.25, indexing="ij")
-
-    # print(xpos, ypos, hist)
-
-    # xpos = xpos.ravel()
-    # ypos = ypos.ravel()
-    # zpos = 0
-
-    # # Construct arrays with the dimensions for the 16 bars.
-    # dx = dy = 0.5 * np.ones_like(zpos)
-    # dz = hist.ravel()
-
-    # ax.bar3d(xpos, ypos, zpos, dx, dy, dz, zsort='average')
-
-    # plt.show()
-
-    # raise ValueError
     args = parse_args()
     fname = os.path.join(c.curFile,args.f)
     plt.rcParams['text.usetex'] = True
@@ -69,7 +45,7 @@ if __name__ == '__main__':
         'STARS': 'Effects of Maximum Star Visibility',
     }
     units = {
-        'CENTROID': 'Centroiding Accuracy [px]',
+        'CENTROID': 'Centroiding Error [px]',
         'EPS': 'Total Image Plane Translation [px]',
         'EPS_LAT': 'Lateral Image Plane Translation [px]',
         'EPS_LONG': 'Vertical Image Plane Translation [px]',
@@ -95,52 +71,61 @@ if __name__ == '__main__':
     colname = "QUATERNION_ERROR_[arcsec]"
     pname = args.f.split('/')[1].split('.')[0]
 
-    mult = 1/(1-2/np.pi)**(5/10)
-    if pname == 'EPS_LONG':
-        mult = np.sqrt(2/np.pi)
-    elif pname == 'SUPERCENTROID':
-        mult = 1/(2/np.pi)**(5/10)
-
-    half_normal_std = lambda x: x * mult
-    half_normal_mean = lambda x: half_normal_std(x) * mult
-
     datadf:pd.DataFrame = pd.read_pickle(fname)
-    # print(half_normal_mean(datadf[colname].std()))
-    # raise ValueError
 
     bins = 50
+    print('bins: {}'.format(bins))
     halfnormal = lambda x, s: np.sqrt(2)/(s*np.sqrt(np.pi)) * np.exp(-x**2 / (2*s**2))
+    norm = lambda x, m, s: 1 / (s*np.sqrt(2*np.pi))*np.exp(-0.5*((x-m)/s)**2)
 
-    print(datadf[colname].std())
-    datadf = datadf[datadf[colname] <= 6*datadf[colname].std()]
+    print(len(datadf.index))
+    std = np.sqrt((datadf[colname]**2).sum()/len(datadf.index))
+    datadf = datadf[datadf[colname] <= 6*std    ]
+    print(len(datadf.index))
     # raise ValueError
-
+    # datadf['BASE_DEV_X']*=-1
     if args.s == 'm':
-        x_data = np.linspace(0, 1.1*datadf[colname].max(), 100)
-        hn_sig = half_normal_std(datadf[colname].std())
+        
+        h = np.histogram(datadf[colname], bins=bins, density=True)
+        hmax = np.argmax(h[0])
 
-        halfdata_div = halfnormal(x_data, hn_sig)
+        # hmax -=2
+        print(f'HMAX IDX: {hmax}')
+        # ohmax = hmax
 
-        # datadf = datadf[datadf[colname] <= 3*hn_sig]
+        print(f'MEAN:{h[1][hmax]}')
+        
+        x_data = np.linspace(0, 1.05*datadf[colname].max(), 1000)
+        newsig = np.sqrt(((datadf[colname]-h[1][hmax])**2).sum() / len(datadf.index))
+        # newsig = np.sqrt(((datadf[colname])**2).sum() / len(datadf.index))
+        # newsig = 36.0
+
+        halfdata_div = halfnormal(x_data, newsig)
+        normrange = norm(x_data, h[1][hmax], newsig)
+        # normrange = np.array([2*y if y < h[1][hmax] else y for y in normrange])
 
         fig, ax = plt.subplots()
         ax.hist(datadf[colname], bins=bins, density=True, label='Simulation Data')
-        if hn_sig > 1e-5:
-            label=r'Half-Normal Distribution, $\sigma$='+f'{np.round(hn_sig,3)}'
-            ax.plot(x_data, halfdata_div, 'r', label=label)
+        if newsig > 1e-5:
+            label=f'{np.round(h[1][hmax],3)}\"'+r' $\pm$ '+f'{np.round(newsig,3)}\"'+r', 1$\sigma$'
+            ax.plot(x_data+h[1][hmax], halfdata_div, 'r', label=label)
+            # ax.plot(x_data, normrange, 'red', label=label)
             ax.legend(fontsize=12)
         # ax.set_title(r'\begin{center}'+f'{titles[pname]}\n'+r'$\pm$'+f'{hn_sig:.3}'+r' Arcsec ($1\sigma$)\end{center}', fontsize=15)
         ax.set_xlabel(colname.replace('_',' ').title(), fontsize=15)
         ax.set_ylabel('Probability Density', fontsize=15)
 
-        ttil = '/Users/gagandeepthapar/Desktop/School/AERO/MS/Thesis/Documents/StarTrackerThesis/chapters/5_Univariate_Effect_Analysis/images/' +pname+f'_{int(hn_sig*1000)}'+'.png'
+        ttil = '/Users/gagandeepthapar/Desktop/School/AERO/MS/Thesis/Documents/StarTrackerThesis/chapters/5_Univariate_Effect_Analysis/newimages/' +pname+f'_{int(newsig*1000)}'+'.png'
 
         plt.subplots_adjust(top=0.96, left=.11, right=.957)
         
+        normstd = np.sqrt(((datadf[colname] - 12.3)**2).sum()/len(datadf.index))
+        print(normstd)
         if args.p:
             plt.show()
         else:
             plt.savefig(ttil, dpi=600)
+            print('Saved!')
         # plt.show()
 
     if args.s == 's':
@@ -150,7 +135,7 @@ if __name__ == '__main__':
         paramname = '_'.join(paramname)
         match paramname:
             case 'CENTROID':
-                params = ['BASE_DEV_X', 'BASE_DEV_Y']
+                params = ['BASE_DEV_X']
             
             case 'EPS':
                 params = ['F_ARR_EPS_X', 'F_ARR_EPS_Y', 'F_ARR_EPS_Z']
@@ -182,62 +167,73 @@ if __name__ == '__main__':
         # ax = fig.add_subplot(projection='3d')
 
         fullparams = [*params, colname]
-        data = datadf[fullparams].copy()
+        data = datadf[['MAX_MAGNITUDE', colname]].copy()
+        data.loc[data[colname]>0, colname] = 0 
+        data[colname]*=-1
+        
 
-        data['MAG'] = data[params].apply(lambda x: np.linalg.norm(x)*np.sign(x[0]), axis=1)
-        data = data[data[colname] > 0]
-        # print(data[colname].max())
+        # print(data)
         # raise ValueError
 
         fig = plt.figure()
         
-        bincount = 20
+        bincount = 30
         ax = fig.add_subplot()
-        xdata = data.MAG
+        xdata = data.MAX_MAGNITUDE.unique()
+        ydata = []
+        for mag in xdata:
+            ddf = data[data.MAX_MAGNITUDE == mag].copy()
+            rate = ddf[colname].sum() / len(ddf.index) * 100
+            ydata.append(rate)
+        print(xdata)
+        print(ydata)
         # print(xdata.min())
         # raise ValueError
         # xdata.sort()
-        hist, x, y = np.histogram2d(xdata, data[colname], bins=bincount, density=True)
-        print(hist.shape, x.shape, y.shape)
-        xpos, ypos = np.meshgrid(x[:-1], y[:-1], indexing="ij")
+        # hist, x, y = np.histogram2d(xdata, ydata, bins=bincount, density=True)
+        # # print(hist.shape, x.shape, y.shape)
+        # xpos, ypos = np.meshgrid(x[:-1], y[:-1], indexing="ij")
         
-        t = ax.contourf(xpos, ypos, hist)
-        for x in xdata:
-            if x <= xpos.max() and x >= xpos.min():
-                ax.axvline(x, linewidth=0.5,color='black', linestyle='dashed', alpha=0.9)
+        # t = ax.contourf(xpos, ypos, hist)
+        # for x in xdata:
+        #     if x <= xpos.max() and x >= xpos.min():
+        #         ax.axvline(x, linewidth=0.5,color='black', linestyle='dashed', alpha=0.9)
 
-
+        # fig, ax = plt.subplots()
+        ax.plot(xdata, ydata)
         # t = ax.scatter(data.MAX_MAGNITUDE, data[colname])
 
-        ax.set_xlabel(f'{units[paramname]}', fontsize=12)
-        ax.set_ylabel(r'Estimated Accuracy, 1$\sigma$ [arcsec]', fontsize=12)
+        ax.set_xlabel('Maximum Apparent Magnitude Visible', fontsize=12)
+        ax.set_ylabel('Quantity-Based Star Failure Rate [%]', fontsize=12)
+
+        # ax.set_xlabel(f'{units[paramname]}', fontsize=12)
+        # ax.set_ylabel(r'Estimated Accuracy, 1$\sigma$ [arcsec]', fontsize=12)
         # ax.set_title(f'{sensetitle[paramname]}\n', fontsize=15)
         
-        if params[0] == 'FOCAL_LENGTH':
-            fovcalc = lambda f: np.round(2*np.rad2deg(np.arctan(c.SENSOR_HEIGHT/(2*f))),2)
-            tls = np.array([1000,2000,3000,4000,5000,6000])
-            ax2 = ax.twiny()
-            ax2.set_xlim(ax.get_xlim())
-            ax2.set_xlabel('FOV [deg]', fontsize=12)
-            ax2.set_xticklabels(fovcalc(tls))
-            # ax.set_title('Focal Length [px]')
-            ax.set_xlabel('Focal Length [px]')
-            plt.subplots_adjust(hspace=0.5)#, left=.104, right=.957)
-        else:
-            plt.subplots_adjust(top=0.962, hspace=0.5)#, left=.104, right=.957)
+        # if params[0] == 'FOCAL_LENGTH':
+        #     fovcalc = lambda f: np.round(2*np.rad2deg(np.arctan(c.SENSOR_HEIGHT/(2*f))),2)
+        #     tls = np.array([1000,2000,3000,4000,5000,6000])
+        #     ax2 = ax.twiny()
+        #     ax2.set_xlim(ax.get_xlim())
+        #     ax2.set_xlabel('FOV [deg]', fontsize=12)
+        #     ax2.set_xticklabels(fovcalc(tls))
+        #     # ax.set_title('Focal Length [px]')
+        #     ax.set_xlabel('Focal Length [px]')
+        #     plt.subplots_adjust(hspace=0.5)#, left=.104, right=.957)
+        # else:
+        plt.subplots_adjust(top=0.962, hspace=0.5)#, left=.104, right=.957)
         
+        # cbar = fig.colorbar(t, ax=ax)
+        # cbar.ax.get_yaxis().labelpad = 15
+        # cbar.ax.set_ylabel('Probability Density', rotation=90, fontsize=12)
         
-        
-        
-        cbar = fig.colorbar(t, ax=ax)
-        cbar.ax.get_yaxis().labelpad = 15
-        cbar.ax.set_ylabel('Probability Density', rotation=90, fontsize=12)
-        
-        ttil = '/Users/gagandeepthapar/Desktop/School/AERO/MS/Thesis/Documents/StarTrackerThesis/chapters/5_Univariate_Effect_Analysis/images/' +pname+'.png'
+
+        ttil = '/Users/gagandeepthapar/Desktop/School/AERO/MS/Thesis/Documents/StarTrackerThesis/chapters/5_Univariate_Effect_Analysis/newimages/' +pname+'.png'
         if args.p:
             plt.show()
         else:
             plt.savefig(ttil, dpi=600)
+            print("Saved")
 
         # plt.show()
 

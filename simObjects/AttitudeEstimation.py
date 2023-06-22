@@ -35,6 +35,9 @@ class QUEST:
 
         min_diff = min(q_diff_A, q_diff_B)
 
+        # if min_diff > 200:
+            # return -1
+
         if min_diff > 3600:
             logger.critical(f'{c.RED}QUEST FAILURE{c.DEFAULT}')
             # print(self.q_real, est_quat, min_diff)
@@ -189,7 +192,7 @@ class QUEST:
         q_err_n = q_true[3]*conj_Q_calc[3] - q_true[:3] @ conj_Q_calc[:3]
         q_err = np.array([*q_err_e, q_err_n])
 
-        theta = np.arctan2(np.linalg.norm(q_err[:3]), q_err[3])
+        theta = 2*np.arctan2(np.linalg.norm(q_err[:3]), q_err[3])
         theta_deg = np.rad2deg(theta)
         
         return theta_deg * 3600

@@ -6,6 +6,9 @@ pkl=".pkl"
 json=".json"
 dest="/Users/gagandeepthapar/Desktop/School/AERO/MS/Thesis/Documents/StarTrackerThesis/chapters/5_Univariate_Effect_Analysis/images"
 # Loop over files in directory
+
+okarr=()
+
 for file in "$dir_path"/*.pkl
 do
   # Execute command for each file
@@ -15,7 +18,7 @@ do
 
 	echo $pklfile
 
-	FLAG=0
+
 
 #	for imgfile in "$dest"/
 #	do
@@ -28,16 +31,16 @@ do
 #		fi
 #	done
 
-		if [ $FLAG == 0 ]
+		if [[ ! "${okarr[*]}" =~ "$base" ]]
 		then
 			if [[ "$base" =~ .*"SENS".* ]]
 			then
-				continue
+#				continue
 				echo python toolplot.py -f $pklfile -s s
-				python toolplot.py -f $pklfile -s s
+				python toolplot.py -f $pklfile -s s -p
 			else
 				echo python toolplot.py -f $pklfile -s m
-				python toolplot.py -f $pklfile -s m
+				python toolplot.py -f $pklfile -s m -p
 			fi
 
 			echo " "

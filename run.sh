@@ -6,6 +6,7 @@ comp="CENTROID"
 json=".json"
 pkl=".pkl"
 sens="_SENS"
+new="_NEW"
 
 PHILATTAG="F_ARR_PHI F_ARR_THETA"
 EPSLATTAG="F_ARR_EPS_X F_ARR_EPS_Y"
@@ -57,75 +58,77 @@ do
 
 	echo $base
 
-	# IDEAL CASE
-	if [ "$base" == "BASE" ]
+	num="20000"
+	sw="i"
+	cam=$jsonfile
+
+	# base case
+	if [[ "$base" == "BASE" ]]
 	then
-		if [ ! -e "$pklfile" ]
-		then
-			echo "START MC: $base"
-			echo python driver.py -cam $jsonfile -sw i -n 1000 -name $base
-			python driver.py -cam $jsonfile -sw i -n 1000 -name $base
-			echo "END MC: $base"
-		fi
+		sw="i"
+		cam="i"
+		num=1000
+	fi
 
-	# CENTROID CASE
-	elif [ "$base" =~ .*"CENTROID".* ]
+	# check full
+	if [[ "$base" =~ .*"FULL".* ]]
 	then
+		sw="data/CENTROID.json"
+	fi
 
-		if [ ! -e "$pklfile" ]
+	# check centroid
+	if [[ "$base" =~ .*"CENTROID".* ]]
+	then
+		
+		if [[ ! $base =~ .*"FULL".* ]]
 		then
-			echo "START MC: $base"
-			echo python driver.py -cam i -sw $jsonfile -n 20000 -name $base 
-			python driver.py -cam i -sw $jsonfile -n 20000 -name $base 
-			echo "END MC: $base"
+			cam="i"
+		
+		else
+			jsonfile="$par/${base#"FULL"}.json"
+
 		fi
 
-		if [ ! -e "$sensfile" ]
-		then
-			echo "START SENSITIVITY: $base"
-			echo python driver.py -cam i -sw $jsonfile -sim S -name $base$sens -par BASE_DEV_X BASE_DEV_Y
-			python driver.py -cam i -sw $jsonfile -sim S -name $base$sens -par BASE_DEV_X BASE_DEV_Y
-			echo "END SENSITIVITY: $base"
-		fi
+		sw=$jsonfile
+	fi
 
-	else
+	param=""
+	if [[ "${namearr[*]}" =~ "$base" ]]
+	then
+#		echo "EXISTS"
 
-		if [ ! -e "$pklfile" ]
-		then
-			echo "START MC: $base"
-
-			if [[ ! "$base" =~ "FULL".* ]]
+		for i in ${!namearr[@]}; do
+			if [ ${namearr[$i]} == $base ]
 			then
-				echo python driver.py -cam $jsonfile -sw i -n 20000 -name $base
-				python driver.py -cam $jsonfile -sw i -n 20000 -name $base
-				
-			else
-				echo python driver.py -cam $jsonfile -n 20000 -name $base
-				python driver.py -cam $jsonfile -n 20000 -name $base
+				break
 			fi
+		done
+		param=${tagarr[$i]}
+	
+	fi
 
-			echo "END MC: $base"
-		fi
+	if [[ ! $param == "" ]]
+	then
+		param="-par $param"
+	fi
+	
 
-		if [ ! -e "$sensfile" ]
-		then
-			if [[ "$base" =~ "FULL".* ]]
-			then
-				continue
-			fi
+	#echo "-n $num -sw $sw -cam $cam $param" 
 
-			echo "START SENSITVITY: $base"
-			for i in ${!namearr[@]}; do
-				if [ ${namearr[$i]} == $base ]
-				then
-					break
-				fi
-			done
-			echo python driver.py -cam $jsonfile -sw i -sim S -name $base$sens -par ${tagarr[$i]} 
-			python driver.py -cam $jsonfile -sw i -sim S -name $base$sens -par ${tagarr[$i]} 
-			echo "END SENSITIVITY: $base"
-		fi
-	fi	
+	echo "MC"
+	echo "python driver.py -n $num -sw $sw -cam $cam -name $base"
+	python driver.py -n $num -sw $sw -cam $cam -name $base
+	echo " "
+
+	if [[ ! "$param" == "" ]]
+	then
+		echo "SENS"
+		echo "python driver.py -sim s -sw $sw -cam $cam $param -name $base$sens"
+		python driver.py -sim s -sw $sw -cam $cam $param -name $base$sens
+	fi
+	echo " "
+	
 done
 
-source plot.sh
+#source plot.sh
+#

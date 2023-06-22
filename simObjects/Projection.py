@@ -63,9 +63,10 @@ class Projection:
     def PHI_S(self, sim_row:pd.Series)->np.ndarray:
 
         cv_true = sim_row.CV_TRUE
-        # x_f = np.random.normal(7e-6, 3.9e-6)
-        # fZ = (self.state.FOCAL_LENGTH * (self.temp-25)*x_f) + self.state.F_ARR_EPS_Z
-        fZ = self.state.F_ARR_EPS_Z
+        x_f = np.random.normal(7e-6, 3.9e-6)
+        fZ = (self.state.FOCAL_LENGTH * (self.temp-25)*x_f) + self.state.F_ARR_EPS_Z
+        
+        # fZ = self.state.F_ARR_EPS_Z
         # logger.critical(fZ)
 
 
@@ -85,18 +86,35 @@ class Projection:
         P_star = lam_star * r_S_F_pi + r_F_pi_pi
 
         # add centroiding error
-        if np.abs(self.state.BASE_DEV_X) > 0:
-            if self.type == 'MC':
-                cdiff = self.centroid_model(sim_row.v_magnitude)/np.sqrt(2)
-                # cdiff = self.state.BASE_DEF_X
-                # logger.critical(cdiff)
-                P_star[0] += np.random.normal(0, cdiff)
-                P_star[1] += np.random.normal(0, cdiff)
+        # structured s/t value in dataframe if positive is the std
+        #                                   if negative use centroiding model
+        
+        if self.type == 'MC':
             
+            if self.state.BASE_DEV_X > 0:
+                # logger.critical('specified')
+                sig = self.state.BASE_DEV_X
+            elif self.state.BASE_DEV_X < 0:
+                # logger.critical('centroid model')
+                sig = self.centroid_model(sim_row.v_magnitude)
             else:
-                t = np.random.uniform(0, 2*np.pi)
-                P_star[0] += self.state.BASE_DEV_X * np.cos(t)
-                P_star[1] += self.state.BASE_DEV_Y * np.sin(t)
+                # logger.critical('ideal')
+                sig = 0
+
+            cdiff = np.abs(np.random.normal(0, sig))
+
+        else:
+            
+            cdiff = self.state.BASE_DEV_X
+            # print(cdiff)
+            # raise ValueError
+
+        t = np.random.uniform(0, 2*np.pi) 
+        eta_x = cdiff * np.cos(t)
+        eta_y = cdiff * np.sin(t)
+
+        P_star[0] += eta_x
+        P_star[1] += eta_y
 
         s_hat = np.array([-P_star[0], -P_star[1], self.state.FOCAL_LENGTH])
 
@@ -149,6 +167,8 @@ class NoiseSim:
             u_in = self.__calc_photons(row.v_magnitude)
             self.__add_star_to_image(x, y, u_in)
 
+        self.max_signal= deepcopy(self.img_data)
+
         self.frame['STAR_POWER'] = self.star_counter
 
         # Shot Noise (Signal)
@@ -180,6 +200,8 @@ class NoiseSim:
         # Combine noise and signal; check bounds
         # self.img_data = self.img_data*5
         self.signal = (self.img_data + self.dark_noise)
+        self.noisysignal= deepcopy(self.signal)
+
         self.signal[self.signal < 0] = 0
         self.signal[self.signal > self.max_e] = self.max_e
 
@@ -221,24 +243,46 @@ class NoiseSim:
     
     def __plot_analysis(self, tot_star_count:int):
         plt.rcParams['text.usetex'] = True
-        fig = plt.figure()
-        ax = fig.add_subplot(2,1,1)
-        raw = ax.imshow(self.pre_filter)
-        ax.set_title('{} / {} Stars Visible'.format(len(self.frame.index), tot_star_count), fontsize=15)
-        cbar = fig.colorbar(raw, ax=ax)
-        
-        cbar.ax.get_yaxis().labelpad = 15
-        cbar.ax.set_ylabel('Brightness Intensity', rotation=90, fontsize=12)
-        # fig = plt.figure()
-        ax = fig.add_subplot(2,1,2)
-        new = ax.imshow(self.signal_dn)
-        
-        cbar = fig.colorbar(new, ax=ax)
-
-        cbar.ax.get_yaxis().labelpad = 15
-        cbar.ax.set_ylabel('Brightness Intensity', rotation=90, fontsize=12)
+        fig, ax = plt.subplots()
+        max_signal = ax.imshow(self.max_signal)
+        cbar = fig.colorbar(max_signal, ax=ax)
 
         plt.show()
+
+        fig, ax = plt.subplots()
+        max_signal = ax.imshow(self.noisysignal)
+        cbar = fig.colorbar(max_signal, ax=ax)
+
+        plt.show()
+
+        fig, ax = plt.subplots()
+        max_signal = ax.imshow(self.pre_filter)
+        cbar = fig.colorbar(max_signal, ax=ax)
+
+        plt.show()
+
+        fig, ax = plt.subplots()
+        max_signal = ax.imshow(self.signal_dn)
+        cbar = fig.colorbar(max_signal, ax=ax)
+
+        plt.show()
+        # ax = fig.add_subplot(2,1,1)
+        # raw = ax.imshow(self.pre_filter)
+        # ax.set_title('{} / {} Stars Visible'.format(len(self.frame.index), tot_star_count), fontsize=15)
+        # cbar = fig.colorbar(raw, ax=ax)
+        
+        # cbar.ax.get_yaxis().labelpad = 15
+        # cbar.ax.set_ylabel('Brightness Intensity', rotation=90, fontsize=12)
+        # # fig = plt.figure()
+        # ax = fig.add_subplot(2,1,2)
+        # new = ax.imshow(self.signal_dn)
+        
+        # cbar = fig.colorbar(new, ax=ax)
+
+        # cbar.ax.get_yaxis().labelpad = 15
+        # cbar.ax.set_ylabel('Brightness Intensity', rotation=90, fontsize=12)
+
+        
         return
 
     def __calc_photons(self, mag):
@@ -267,55 +311,6 @@ class NoiseSim:
     def __get_prnu_signal(self):
         return np.random.normal(0, 1, self.img_data.shape)
 
-class RandomProjection(Projection):
-
-    def __init__(self, sim_row:pd.Series):
-
-        super().__init__(sim_row)
-
-        self.quat_real = self.__set_real_rotation()
-        self.C = self.quat_to_rotm(self.quat_real)
-        self.frame = self.__create_star_frame()
-
-        # INVERSE ROTATIONS TO GET ECI -> CV DESCRIPTION
-        self.quat_real = np.array([*(-1*self.quat_real[:3]), self.quat_real[3]])
-        self.C = self.quat_to_rotm(self.quat_real)
-        # self.C = self.C.T
-        # self.quat_real = self.rotm_to_quat(self.C)
-
-        return
-
-    def __repr__(self)->str:
-        name = 'PROJECTION @ {}'.format(self.quat_real)
-        return name
-    
-    def __create_star_frame(self):
-
-        # create dataframe
-        frame = pd.DataFrame()
-
-        frame['IDX'] = np.array([i for i in range(int(self.state.NUM_STARS_SENSOR))])
-        frame['CV_TRUE'] = frame.apply(lambda v: self.__s_hat_in_fov(), axis=1)
-        frame['ECI_TRUE'] = frame['CV_TRUE'].apply(lambda v: self.C @ v)
-        frame['CV_MEAS'] = frame['CV_TRUE'].apply(self.PHI_S)
-        
-
-        return frame
-
-    def __s_hat_in_fov(self)->np.ndarray:
-        fov = np.arctan2(c.SENSOR_HEIGHT/2,self.state.FOCAL_LENGTH)
-        phi = np.random.uniform(-fov, fov)  
-        theta = np.random.uniform(-np.pi, np.pi)
-        return np.array([np.sin(phi)*np.cos(theta), np.sin(phi)*np.sin(theta), np.cos(phi)])
-
-    def __set_real_rotation(self)->None:
-        
-        # quaternion representation
-        q = np.random.uniform(-1,1,4)
-        q = q/np.linalg.norm(q)
-        
-        return q
-
 class StarProjection(Projection):
 
     def __init__(self, sim_row:pd.Series, catalog:pd.DataFrame, type:str):
@@ -342,6 +337,9 @@ class StarProjection(Projection):
             self.quat_real = self.rotm_to_quat(self.C)
 
             self.frame = self.frame.apply(self.PHI_S, axis=1)
+
+            self.noise = NoiseSim(self.frame, sim_row)
+
             # self.frame['TEMP'] = self.temp*np.ones(self.frame.R)
         
 

@@ -45,7 +45,7 @@ class MonteCarlo(Simulation):
         std_ratio = 1
         prev_std = 1
 
-        while std_ratio > 1e-4 or len(fin_df.index) < 2_000:
+        while std_ratio > 1e-5 or len(fin_df.index) < 10_000:
             st = time.perf_counter()
             count += 1
             df = self.create_data()

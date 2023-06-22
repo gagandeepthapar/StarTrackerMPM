@@ -1,3 +1,5 @@
+# pylint: disable-all
+
 import sys
 sys.path.append(sys.path[0] + '/..')
 
@@ -5,6 +7,7 @@ sys.path.append(sys.path[0] + '/..')
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 import constants as c
 import logging
@@ -109,9 +112,9 @@ def generate_projection(starlist:pd.DataFrame, ra:float=0, dec:float=0, roll:flo
 
     return fstars
 
-def plot_frame(frame:pd.DataFrame, boresight:np.ndarray):
+def plot_frame(frame:pd.DataFrame, boresight:np.ndarray, ra, dec):
     
-    def get_cone(start:np.ndarray, end:np.ndarray, rad:float, size:int)->np.array:
+    def get_cone(start:np.ndarray, end:np.ndarray, rad:float, size:int, zflag=None)->np.array:
 
         def rotm(vec1:np.array, vec2:np.array)->np.array:
                 a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
@@ -128,7 +131,13 @@ def plot_frame(frame:pd.DataFrame, boresight:np.ndarray):
         y = rad*np.sin(t)
         z = h*np.ones(size)
 
-        R = rotm(np.array([0, 0, 1]), end-start)
+
+        if zflag is None:
+            R = rotm(np.array([0, 0, 1]), end-start)
+        else:
+            R = np.eye(3)
+
+        print(R)
 
         xr = np.zeros(size)
         yr = np.zeros(size)
@@ -160,30 +169,72 @@ def plot_frame(frame:pd.DataFrame, boresight:np.ndarray):
 
     # FOV Cone
     cone = get_cone([0,0,0], boresight, np.deg2rad(10), 20)
-    ax.plot_surface(cone[0], cone[1], cone[2],color='purple', alpha=0.3)
+    # ax.plot_surface(cone[0], cone[1], cone[2],color='blue', alpha=0.3)
 
-    # boresight *= 1.1
-    # ax.scatter(0, 0, 1, marker='x', s=30, color='black')
+    relcone = get_cone(np.array([0, 0, 0]), np.array([0, 0, 1]), np.deg2rad(10), 20, 5)
+    ax.plot_surface(relcone[0], relcone[1], relcone[2], color='red', alpha=0.3)
+    # print(relcone)
 
 
-    # ax.plot([0, 0], [0, 0], [0, 1], linestyle='dashed', color='red')
-    ax.plot([0, boresight[0]], [0, boresight[1]], [0, boresight[2]], linestyle='dashed', color='purple')
+    rabs = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), 0])
+    rabs = rabs / np.linalg.norm(rabs)
+    rax = rabs[0]
+    ray = rabs[1]
+
+
+    # ax.plot([0, boresight[0]], [0, boresight[1]], [0, boresight[2]], linestyle='dashed', color='purple')
     ax.plot([0, 1], [0, 0], [0, 0], linestyle='dashed', color='red')
     ax.plot([0, 0], [0, 1], [0, 0], linestyle='dashed', color='blue')
     ax.plot([0, 0], [0, 0], [0, 1], linestyle='dashed', color='green')
+    # ax.plot([0, rax], [0, ray], [0, 0], linestyle='dotted', color='purple')
     ax.scatter(1,0,0,marker='>', color='red')
+    ax.text(1.1, 0, -0.0, '$\overrightarrow{\mathbf{X}}$')
     ax.scatter(0,1,0,marker='>', color='blue')
+    ax.text(0, 1.1, -0.0, '$\overrightarrow{\mathbf{Y}}$')
     ax.scatter(0,0,1,marker='>', color='green')
+    ax.text(0, 0, 1.1, '$\overrightarrow{\mathbf{Z}}$')
+    # ax.scatter(rax, ray, 0, marker='>', color='purple')
+
+    arc_angles = np.linspace(0 * np.pi, ra, 20)
+    arc_xs = 0.5 * np.cos(arc_angles) * rax
+    arc_ys = 0.5 * np.sin(arc_angles) * ray
+    arc_zs = np.zeros(arc_ys.shape)
+    # ax.plot(arc_xs, arc_ys, arc_zs, color = 'purple', lw = 2)
+    # ax.text(0.6*np.cos(ra/2), 0.6*np.sin(ra/2), 0, '$\mathbf{\\alpha}$', size=15)
+
+    r = 0.5  # radius
+    theta_values = np.linspace(0, dec, 100)  # angles for parameterizing the circle
+
+    # Original circle (around z-axis)
+    x = r * np.cos(theta_values)
+    z = r * np.sin(theta_values)
+    y = np.zeros_like(x)  # circle is in xy-plane
+
+    # Rotation
+    angle = ra  # convert angle to radians
+    rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)],
+                                [np.sin(angle),  np.cos(angle)]])
+
+    # Apply rotation to each point on the circle
+    for i in range(len(x)):
+        x[i], y[i] = np.dot(rotation_matrix, [x[i], y[i]])
+    
+    # ax.plot(x, y, z, color = 'purple', lw = 2)
+    
 
     for i, row in frame.iterrows():
         eci = row.ECI_TRUE
-        ax.scatter(*eci, marker='*', color='black')
+        cv = row.CV_TRUE
+        # ax.scatter(*eci, marker='*', color='black')
+        ax.scatter(*cv, marker='*', color='black')
 
-    ax.scatter(*boresight, marker='x', s=50, color='purple')    
+    # ax.scatter(*boresight, marker='x', s=50, color='purple')    
+    # ax.text(0.6*np.cos(ra)*np.cos(dec/3), 0.6*np.sin(ra)*np.cos(dec/3), 0.6*np.sin(dec/3), '$\delta$', size=15)
     ax.axis('equal')
     ax.axis('off')
     ax.grid(False)
-    
+
+
     return
 
 if __name__ == '__main__':
@@ -194,7 +245,11 @@ if __name__ == '__main__':
     
     ra = 0.8071793307712165
     dec = 0.5853173095736518
-    roll = 0.6432197502210117 
+    roll = 0.6432197502210117
+
+    # ra = 0
+    # dec = 0
+    roll = 0 
 
     print(ra, dec, roll)
 
@@ -210,9 +265,12 @@ if __name__ == '__main__':
     boresight = np.array([np.cos(ra)*np.cos(dec), np.sin(ra)*np.cos(dec), np.sin(dec)])
 
     fs = generate_projection(starframe,ra, dec, roll, fov)
-    # fs = fs[fs['v_magnitude'] <= 5.2]
+    fs = fs[fs['v_magnitude'] <= 5.2]
     print(fs)
-    # plot_frame(fs, boresight)
-    plot_map(starframe[starframe['v_magnitude'] <= 5.2], ra, dec, fov)
+    plot_frame(fs, boresight, ra, dec)
+
+    print(eci_to_cv_rotation(ra, dec, roll)@np.array([1, 0, 0]))
+
+    # plot_map(starframe[starframe['v_magnitude'] <= 5.2], ra, dec, fov)
 
     plt.show()

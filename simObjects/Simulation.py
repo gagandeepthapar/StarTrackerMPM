@@ -15,7 +15,7 @@ from simObjects.Software import Software
 from simObjects.Orbit import Orbit
 from simObjects.StarTracker import StarTracker
 from simObjects.AttitudeEstimation import QUEST
-from simObjects.Projection import Projection, RandomProjection, StarProjection
+from simObjects.Projection import Projection, StarProjection
 
 import threading
 logger = logging.getLogger(__name__)
@@ -70,19 +70,21 @@ class Simulation:
         preapply = time.perf_counter()
 
         sim_data[self.output_name] = sim_data.apply(obj_func, axis=1)
-    
+
+        logger.critical('\n{}'.format(sim_data.head().to_string()))
+        # raise 
         
         if self.output_name == self.obj_func_out[self.star_mag]:
             logger.info('\tMean: {}'.format(sim_data[self.output_name].mean()))
         
-        else:
-            sim_data = sim_data[sim_data[self.output_name] >= 0]
+        # else:
+            # sim_data = sim_data[sim_data[self.output_name] >= 0]
         # raise ValueError
         # logger.critical(sim_data[self.output_name].mode())
         
         datastd = sim_data[self.output_name].std() / (np.sqrt(1 - 2/np.pi))
         # datamean = sim_data[self.output_name].mean()
-        sim_data = sim_data[sim_data[self.output_name] <= 6*datastd]
+        # sim_data = sim_data[sim_data[self.output_name] <= 200]
         logger.debug('\n{}'.format(sim_data.head().to_string()))
         # raise ValueError
         # logger.critical(f'{c.RED}POST: {len(self.sim_data.index)}{c.DEFAULT}')

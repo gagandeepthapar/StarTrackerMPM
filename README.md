@@ -1,46 +1,20 @@
-# Star Tracker Measurement Process Model (STMPM)
-**A Robust Model for Measuring Accuracy and Precision of LEO-Based Star Trackers: An Analysis of Disturbance Propagation**
+# A Statistical Model for Measuring Accuracy and Precision in LEO-based Star Trackers: An Analysis of Disturbance Propagation
+This repository contains the work for my thesis in partial requirements of the Master of Science Degree in Aerospace Engineering from California Polytechnic State University - San Luis Obispo.
+
+## Abstract
+As the complexity of CubeSat missions continues to escalate, the usage of star trackers as reliable guidance systems has garnered widespread interest.
+This increased demand, coupled with prohibitive costs from commercial vendors, has made the development of in-house star trackers a compelling alternative.
+However, the high sensitivity of star trackers to various sources of error poses a significant challenge, especially given the lack of existing tools to estimate the accuracy of a given configuration.
+This thesis presents a novel approach to address this gap by introducing a statistical model capable of predicting the accuracy of star trackers via replication of the underlying measurement process and error models derived from first principles.
+The study examines the associations between star tracker accuracy and sensor-specific factors such as image plane translation, rotation, and centroiding precision and extends to assessing the impact of the thermal and radiation components of the LEO environment on star tracker accuracy throughout its operational lifespan with respect to their effects on additional distortion and image noise, respectively.
+It is determined that deviations in image plane translation result in a consistent bias proportional to the magnitude of lateral aberration on accuracy while rotations in the image plane introduce considerable error in attitude estimates.
+The influence of centroiding precision and image noise on star vector determination and star detection, respectively, and their relationship with overall accuracy is also examined based on experimental and simulation data.
 
 ## Considerations
 Several factors need to be considered to accurately determine the measurement accuracy and precision of a star tracker in orbit. A few of the considerations are listed below
 
-### Hardware
-- Focal Length Deviation
-- Focal Array Tilt
-- Radial Distortion
-- Principal Point Deviation
-- Baffle (WIP)
-
-### Software
-- Centroiding Accuracy
-- Noise Minimization (WIP)
-
-### Environment
-- Temperature Change/Cycling (WIP)
-- Radiation  (WIP)
-- Atomic Oxygen (WIP)
-
-## Usage
-A few examples of how the tool can be used are listed below
-
-#### **Improved Centroiding Effect**
-In *Optical System Error Analysis and Calibration Method of High-Accuracy Star Trackers*, Sun et al., the expected centroiding accuracy used for Monte Carlo Analysis was set to 0.1 pixels (3-sigma). Since publication, several centroiding algorithms and approaches have been developed and have vastly improved. In *A Novel Systematic Error Compensation Algorithm Based on Least Squares Support Vector Regression for Star Sensor Image Centroid Estimation*, Yang et al., a method was proposed bringing the expected centroid error to 6e-5 pixels! Using the STMPM, we can see that the expected star tracker accuracy improvement solely due to the new centroiding algorithm is improved by 1 arcsecond! The results were achieved using Monte Carlo Analysis with the derived model. It should be noted that Sun et al. uses a single incident angle whereas the STMPM uses a uniformly random incident angle within +/- 10 degrees.
-
-![SuperCentroid](media/inAction/improvedCentroidAnalysis.png)
-
-#### **Environmental Effects**
-The environment of space will create disturbances in the Star Tracker Measurement Process Model. These effects are coupled to the orbit the satellite resides within; to properly estimate how an orbit affects measurement accuracy and precision, an orbit needs to be randomly generated. The `Orbit` class represents an orbit that can be *randomized* within the distribution modeled after the orbits currently occupied by active CubeSats (and LEO satellites, in general). This was accomplished by reading in data from [CelesTrak](https://celestrak.org/) and transforming the data to a normal distribution which can be sampled (and reverse-transformed). The orbit can be plotted in matplotlib where the satellite and its body reference frame are plotted alongside the directional vector pointing to the Sun's location (based on a randomly generated Julian Date). The position of the sun and the attitude of the satellite (assumed to be nadir-pointing) directly influence the effect of temperature on the system, more specifically the focal length and optical distortion. The plot is a visualization method of the satellite's position relative to Earth and the Sun.
-
-![SampleOrbitLOS](media/inAction/Simulated_Orbit.png)
-![SampleOrbitNoLOS](media/inAction/SimulatedOrbit_noLOS.png)
-
-#### **Software Effects**
-One of the major components of star tracker accuracy and precision is the software embedded in the hardware. [QUEST](https://en.wikipedia.org/wiki/Quaternion_estimator_algorithm) and [Davenport's q-Method](https://ntrs.nasa.gov/citations/19680021122) are popular methods in extracting the attitude of the satellite from a star tracker. These methods require a set of vectors in the body frame (e.g., the camera frame) and their inertial counterpart to calculate the attitude transformation of the boresight of the star tracker (e.g., via Directional Cosine/Rotation Matrix or Quaternion). The `Projection` dataclass contains information for generating a list of random X/Y coordinate pairs that lie on a given camera focal array. ECI and Camera Vectors are then generated using the pinhole projection which can be used to analyze various software affects (e.g., affect of centroiding accuracy on attitude determination).
-
-![PinholeProjection](media/inAction/PinholeProjection.png)
-
-A visualization of the inertial and relative vectors are shown below; the <span style="color:red">red cone</span> shows the inertial attitude of the camera and the <span style="color:blue">blue cone</span> shows the camera rotation projection on the X-axis. A maximum star magnitude of 6 was used.
-
-![StarProjection](media/inAction/projection.png)
-
-
+- Hardware Aberrations (e.g., Focal Plane tilt, translation)
+- Sensor Noise 
+- Centroiding Accuracy 
+- LEO Thermal Environment (and its effects on hardware aberration and sensor noise)
+- LEO Radiation Environment (and its effects on sensor noise)

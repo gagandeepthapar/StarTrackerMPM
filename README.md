@@ -1,6 +1,9 @@
 # A Statistical Model for Measuring Accuracy and Precision in LEO-based Star Trackers: An Analysis of Disturbance Propagation
 This repository contains the work for my thesis in partial requirements of the Master of Science Degree in Aerospace Engineering from California Polytechnic State University - San Luis Obispo.
 
+# DEPRECATED!
+Note: As of 11/5/2023 this repository is deprecated and no longer maintained. A new model has been developed with more intelligent processes and performance improvements (as well as errata cleared up). See [here](https://github.com/gagandeepthapar/StochasticStarTrackerModel) to view and clone updated model. Conference paper supporting new model is currently in pre-print.
+
 ## Abstract
 As the complexity of CubeSat missions continues to escalate, the usage of star trackers as reliable guidance systems has garnered widespread interest.
 This increased demand, coupled with prohibitive costs from commercial vendors, has made the development of in-house star trackers a compelling alternative.
